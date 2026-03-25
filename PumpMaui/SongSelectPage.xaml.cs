@@ -9,6 +9,8 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 {
     private SscSong? _selectedSong;
     private SscChart? _selectedChart;
+    private double _scrollSpeed = GameConstants.DefaultScrollSpeed;
+    private List<SscChart> _currentSortedCharts = []; // Keep track of sorted charts for picker
 
     public ObservableCollection<SongListItem> SongList { get; } = [];
 
@@ -23,6 +25,20 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
+
+    public double ScrollSpeed
+    {
+        get => _scrollSpeed;
+        set
+        {
+            if (Math.Abs(_scrollSpeed - value) < 0.01) return;
+            _scrollSpeed = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ScrollSpeedText));
+        }
+    }
+
+    public string ScrollSpeedText => $"{_scrollSpeed:F1}x";
 
     public SongSelectPage()
     {
@@ -42,166 +58,21 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         }
     }
 
+    private void OnScrollSpeedChanged(object sender, ValueChangedEventArgs e)
+    {
+        ScrollSpeed = e.NewValue;
+        System.Diagnostics.Debug.WriteLine($"🎮 Scroll speed changed to: {ScrollSpeed:F1}x");
+    }
+
     private async Task LoadPhoenixSongsAsync()
     {
         try
         {
             System.Diagnostics.Debug.WriteLine("🎵 Loading all Phoenix songs...");
 
-            // Complete list of Phoenix songs with correct file names
-            var phoenixSongs = new[]
-            {
-                "Songs/16 - PHOENIX/18039 - Solfeggietto/16A8 - Solfeggietto.ssc",
-                "Songs/16 - PHOENIX/18040 - MURDOCH/16A9 - MURDOCH.ssc",
-                "Songs/16 - PHOENIX/18041 - Little Munchkin/16B0 - Little Munchkin.ssc",
-                "Songs/16 - PHOENIX/18042 - Simon Says, EURODANCE!! (feat. Sara M)/16B1 - Simon Says, EURODANCE!! (feat. Sara M).ssc",
-                "Songs/16 - PHOENIX/18043 - Barber's Madness/16B2 - Barber's Madness.ssc",
-                "Songs/16 - PHOENIX/18044 - Yo! Say!! Fairy!!!/16B3 - Yo! Say!! Fairy!!!.ssc",
-                "Songs/16 - PHOENIX/18044.1 - Le Nozze di Figaro ~Celebrazione Remix~/16B4 - Le Nozze di Figaro ~Celebrazione Remix~.ssc",
-                "Songs/16 - PHOENIX/1701 - Festival of Death Moon/1701 - Festival of Death Moon.ssc",
-                "Songs/16 - PHOENIX/1703 - ESP/1703 - ESP.ssc",
-                "Songs/16 - PHOENIX/1706 - Highway Chaser/1706 - Highway Chaser.ssc",
-                "Songs/16 - PHOENIX/1708 - Binary Star/1708 - Binary Star.ssc",
-                "Songs/16 - PHOENIX/1717 - About The Universe/1717 - About The Universe.ssc",
-                "Songs/16 - PHOENIX/1719 - Perpetual/1719 - Perpetual.ssc",
-                "Songs/16 - PHOENIX/1720 - Dancing/1720 - Dancing.ssc",
-                "Songs/16 - PHOENIX/1721 - Galaxy Collapse/1721 - Galaxy Collapse.ssc",
-                "Songs/16 - PHOENIX/1722 - Fracture Temporelle/1722 - Fracture Temporelle.ssc",
-                "Songs/16 - PHOENIX/1723 - Catastrophe/1723 - Catastrophe.ssc",
-                "Songs/16 - PHOENIX/1724 - Human Extinction (PIU Edit.)/1724 - Human Extinction (PIU Edit.).ssc",
-                "Songs/16 - PHOENIX/1725 - That Kitty (PIU Edit.)/1725 - That Kitty (PIU Edit.).ssc",
-                "Songs/16 - PHOENIX/1726 - Underworld ft. Skizzo (PIU Edit.)/1726 - Underworld ft. Skizzo (PIU Edit.).ssc",
-                "Songs/16 - PHOENIX/1730 - Eternal Universe/1730 - Eternal Universe.ssc",
-                "Songs/16 - PHOENIX/1732 - Burn Out/1732 - Burn Out.ssc",
-                "Songs/16 - PHOENIX/1734 - 4NT/1734 - 4NT.ssc",
-                "Songs/16 - PHOENIX/1744 - Ultimate Eyes/1744 - Ultimate Eyes.ssc",
-                "Songs/16 - PHOENIX/1751 - Nyan-turne (feat. KuTiNA)/1751 - Nyan-turne (feat. KuTiNA).ssc",
-                "Songs/16 - PHOENIX/18036.3 - 1948/1948.ssc",
-                "Songs/16 - PHOENIX/18220 - Acquire/Acquire.ssc",
-                "Songs/16 - PHOENIX/18125 - After LIKE/After LIKE.ssc",
-                "Songs/16 - PHOENIX/18140 - Airplane/Airplane.ssc",
-                "Songs/16 - PHOENIX/18236 - Alice in Misanthrope/Alice in Misanthrope.ssc",
-                "Songs/16 - PHOENIX/18243.7 - ALiVE/ALiVE.ssc",
-                "Songs/16 - PHOENIX/18115 - Alone/Alone.ssc",
-                "Songs/16 - PHOENIX/18230 - Altale/Altale.ssc",
-                "Songs/16 - PHOENIX/18120 - Amor Fati/Amor Fati.ssc",
-                "Songs/16 - PHOENIX/18048 - Appassionata/Appassionata.ssc",
-                "Songs/16 - PHOENIX/18239 - Aragami/Aragami.ssc",
-                "Songs/16 - PHOENIX/18A50 - Athena's Shield/Athena's Shield.ssc",
-                "Songs/16 - PHOENIX/18245 - BATTLE NO.1/BATTLE NO.1.ssc",
-                "Songs/16 - PHOENIX/18130 - Beautiful Liar/Beautiful Liar.ssc",
-                "Songs/16 - PHOENIX/18242.6 - Becouse of You/Becouse of You.ssc",
-                "Songs/16 - PHOENIX/18242.3 - Big Daddy/Big Daddy.ssc",
-                "Songs/16 - PHOENIX/18044.5 - Bluish Rose/Bluish Rose.ssc",
-                "Songs/16 - PHOENIX/18100 - BOCA/BOCA.ssc",
-                "Songs/16 - PHOENIX/18015 - BOOOM!!/BOOOM!!.ssc",
-                "Songs/16 - PHOENIX/18242.9 - Break Through Myself feat. Risa Yuzuki/Break Through Myself feat. Risa Yuzuki.ssc",
-                "Songs/16 - PHOENIX/18075 - Bubble/Bubble.ssc",
-                "Songs/16 - PHOENIX/18050 - CHAOS AGAIN/CHAOS AGAIN.ssc",
-                "Songs/16 - PHOENIX/18243.5 - Chobit Flavor/Chobit Flavor.ssc",
-                "Songs/16 - PHOENIX/18205 - CO5M1C R4ILR0AD/CO5M1C R4ILR0AD.SSC",
-                "Songs/16 - PHOENIX/18A90 - Crimson hood/Crimson hood.ssc",
-                "Songs/16 - PHOENIX/18070 - CRUSH/CRUSH.ssc",
-                "Songs/16 - PHOENIX/18057 - Deca Dance/Deca Dance.ssc",
-                "Songs/16 - PHOENIX/18044.3 - Demon of Laplace/Demon of Laplace.ssc",
-                "Songs/16 - PHOENIX/18242 - Destr0yer/Destr0yer.ssc",
-                "Songs/16 - PHOENIX/18072 - Discord/Discord.ssc",
-                "Songs/16 - PHOENIX/18067.5 - DO or DIE/DO or DIE.ssc",
-                "Songs/16 - PHOENIX/18A99 - Doppelganger/Doppelganger.ssc",
-                "Songs/16 - PHOENIX/18036.5 - DUEL/DUEL.ssc",
-                "Songs/16 - PHOENIX/18A30 - Earendel/Earendel.ssc",
-                "Songs/16 - PHOENIX/18126 - ELEVEN/ELEVEN.ssc",
-                "Songs/16 - PHOENIX/18237.5 - EMOMOMO/EMOMOMO.ssc",
-                "Songs/16 - PHOENIX/18049.7 - E.O.N/E.O.N.ssc",
-                "Songs/16 - PHOENIX/18035 - Etude Op 10-4/Etude Op 10-4.ssc",
-                "Songs/16 - PHOENIX/18020 - Euphorianic/Euphorianic.ssc",
-                "Songs/16 - PHOENIX/18033 - Flavor Step!/Flavor Step!.ssc",
-                "Songs/16 - PHOENIX/18242.4 - FLVSH OUT/FLVSH OUT.ssc",
-                "Songs/16 - PHOENIX/18238.8 - Giselle/Giselle.ssc",
-                "Songs/16 - PHOENIX/18054 - Glimmer Gleam/Glimmer Gleam.ssc",
-                "Songs/16 - PHOENIX/18200 - GOODTEK/GOODTEK.ssc",
-                "Songs/16 - PHOENIX/18235 - GOODBOUNCE/GOODBOUNCE.ssc",
-                "Songs/16 - PHOENIX/18027 - Ghroth/Ghroth.ssc",
-                "Songs/16 - PHOENIX/18240 - Halcyon/Halcyon.ssc",
-                "Songs/16 - PHOENIX/18022 - Halloween Party ~Multiverse~/Halloween Party ~Multiverse~.ssc",
-                "Songs/16 - PHOENIX/18251 - Heliosphere/Heliosphere.ssc",
-                "Songs/16 - PHOENIX/18A10 - Hercules/Hercules.ssc",
-                "Songs/16 - PHOENIX/18250 - Horang Pungryuga/Horang Pungryuga.ssc",
-                "Songs/16 - PHOENIX/18A40 - Hymn of Golden Glory/Hymn of Golden Glory.ssc",
-                "Songs/16 - PHOENIX/18A80 - Imaginarized City/Imaginarized City.ssc",
-                "Songs/16 - PHOENIX/18046.5 - Imperium/Imperium.ssc",
-                "Songs/16 - PHOENIX/18A20 - INVASION/INVASION.ssc",
-                "Songs/16 - PHOENIX/18233 - iRELLiA/iRELLiA.ssc",
-                "Songs/16 - PHOENIX/18025 - Jupin/Jupin.ssc",
-                "Songs/16 - PHOENIX/18030 - KUGUTSU/KUGUTSU.ssc",
-                "Songs/16 - PHOENIX/18037 - Lacrimosa/Lacrimosa.ssc",
-                "Songs/16 - PHOENIX/18045 - Lohxia/Lohxia.ssc",
-                "Songs/16 - PHOENIX/18033.5 - Lucid Dream/Lucid Dream.ssc",
-                "Songs/16 - PHOENIX/18238.7.5 - Mahika/Mahika.ssc",
-                "Songs/16 - PHOENIX/18049.5 - MEGAHEARTZ/MEGAHEARTZ.ssc",
-                "Songs/16 - PHOENIX/18215 - MiiK/MiiK.ssc",
-                "Songs/16 - PHOENIX/18A60 - Murdoch vs Otada/Murdoch vs Otada.ssc",
-                "Songs/16 - PHOENIX/18180 - Nade Nade/Nade Nade.ssc",
-                "Songs/16 - PHOENIX/18047 - Neo Catharsis/Neo Catharsis.ssc",
-                "Songs/16 - PHOENIX/18060 - New Rose/New Rose.ssc",
-                "Songs/16 - PHOENIX/18145 - Nostalgia/Nostalgia.ssc",
-                "Songs/16 - PHOENIX/18105 - Nxde/Nxde.ssc",
-                "Songs/16 - PHOENIX/18242.5 - Odin/Odin.ssc",
-                "Songs/16 - PHOENIX/18133 - PANDORA/PANDORA.ssc",
-                "Songs/16 - PHOENIX/18127 - Pirate/Pirate.ssc",
-                "Songs/16 - PHOENIX/18225 - Pneumonoultramicroscopicsilicovolcanoconiosis ft. Kagamine Len GUMI/Pneumonoultramicroscopicsilicovolcanoconiosis ft. Kagamine Len GUMI.ssc",
-                "Songs/16 - PHOENIX/18242.7 - Poppin' Shower/Poppin' Shower.ssc",
-                "Songs/16 - PHOENIX/18046 - PRiMA MATERiA/PRiMA MATERiA.ssc",
-                "Songs/16 - PHOENIX/18238 - PUPA/PUPA.ssc",
-                "Songs/16 - PHOENIX/18080 - Queencard/Queencard.ssc",
-                "Songs/16 - PHOENIX/18237 - R.I.P/R.I.P.ssc",
-                "Songs/16 - PHOENIX/18238.7.0 - Rush-Hour/Rush-Hour.ssc",
-                "Songs/16 - PHOENIX/18238.7 - Rush-More/Rush-More.ssc",
-                "Songs/16 - PHOENIX/18034 - See/See.ssc",
-                "Songs/16 - PHOENIX/18247 - Soldiers (TANO C W TEAM RED ANTHEM)/Soldiers (TANO C W TEAM RED ANTHEM).ssc",
-                "Songs/16 - PHOENIX/18053 - Solve My Hurt/Solve My Hurt.ssc",
-                "Songs/16 - PHOENIX/18049.3 - SONIC BOOM/SONIC BOOM.ssc",
-                "Songs/16 - PHOENIX/18238.9 - Spooky Macaron/Spooky Macaron.ssc",
-                "Songs/16 - PHOENIX/18129.5 - Spray/Spray.ssc",
-                "Songs/16 - PHOENIX/18238.5 - STAGER/STAGER.ssc",
-                "Songs/16 - PHOENIX/18036 - Stardream -Eurobeat Remix-/Stardream -Eurobeat Remix-.ssc",
-                "Songs/16 - PHOENIX/18135 - STORM/STORM.ssc",
-                "Songs/16 - PHOENIX/18055 - Sudden Appearance Image/Sudden Appearance Image.ssc",
-                "Songs/16 - PHOENIX/18048.5 - Super Akuma Emperor/Super Akuma Emperor.ssc",
-                "Songs/16 - PHOENIX/18252 - SWEET WONDERLAND/SWEET WONDERLAND.ssc",
-                "Songs/16 - PHOENIX/18110 - Teddy Bear/Teddy Bear.ssc",
-                "Songs/16 - PHOENIX/18006 - The Apocalypse/The Apocalypse.ssc",
-                "Songs/16 - PHOENIX/18238.7.1 - this game does not exist/this game does not exist.ssc",
-                "Songs/16 - PHOENIX/18128 - TOMBOY/TOMBOY.ssc",
-                "Songs/16 - PHOENIX/18244 - TRICKL4SH 220/TRICKL4SH 220.ssc",
-                "Songs/16 - PHOENIX/18065 - Uh-Heung/Uh-Heung.ssc",
-                "Songs/16 - PHOENIX/18036.7 - Vanish 2 - Roar of the invisible dragon/Vanish 2 - Roar of the invisible dragon.ssc",
-                "Songs/16 - PHOENIX/18000 - VECTOR/VECTOR.ssc",
-                "Songs/16 - PHOENIX/18005 - Versailles/Versailles.ssc",
-                "Songs/16 - PHOENIX/18243 - Viyella's Nightmare/Viyella's Nightmare.ssc",
-                "Songs/16 - PHOENIX/18129 - WHISPER/WHISPER.ssc",
-                "Songs/16 - PHOENIX/18A70 - wither garden/wither garden.ssc",
-                
-                // Remix and Short versions
-                "Songs/16 - PHOENIX/18D10 - [Remix] DISTRICT V/[Remix] DISTRICT V.ssc",
-                "Songs/16 - PHOENIX/18E10 - [Full Song] Teddy Bear/[Full Song] Teddy Bear.ssc",
-                "Songs/16 - PHOENIX/18F60 - [Short Cut] Euphorianic/[Short Cut] Euphorianic.ssc",
-                "Songs/16 - PHOENIX/18F65 - [Short Cut] Phoenix Opening/[Short Cut] Phoenix Opening.ssc",
-                "Songs/16 - PHOENIX/18F70 - [Short Cut] Jupin/[Short Cut] Jupin.ssc",
-                "Songs/16 - PHOENIX/18F75 - [Short Cut] Ghroth/[Short Cut] Ghroth.ssc",
-                "Songs/16 - PHOENIX/18F76 - [Short Cut] Neo Catharsis/[Short Cut] Neo Catharsis.ssc",
-                "Songs/16 - PHOENIX/18F77 - [Short Cut] Hymn of Golden Glory/[Short Cut] Hymn of Golden Glory.ssc",
-                "Songs/16 - PHOENIX/18F78 - [Short Cut] Halloween Party ~Multiverse~/[Short Cut] Halloween Party ~Multiverse~.ssc",
-                "Songs/16 - PHOENIX/18F79 - [Short Cut] Stardream -Eurobeat Remix-/Stardream -Eurobeat Remix-.ssc",
-                "Songs/16 - PHOENIX/18F80 - [Short Cut] PRiMA MATERiA/[Short Cut] PRiMA MATERiA.ssc",
-                "Songs/16 - PHOENIX/18F81 - [Short Cut] DUEL/[Short Cut] DUEL.ssc",
-                "Songs/16 - PHOENIX/18F82 - [Short Cut] Murdoch vs Otada/[Short Cut] Murdoch vs Otada.ssc",
-                "Songs/16 - PHOENIX/18F83 - [Short Cut] Solve My Hurt/[Short Cut] Solve My Hurt.ssc"
-            };
-
             var loadedCount = 0;
 
-            foreach (var songPath in phoenixSongs)
+            foreach (var songPath in GameConstants.Songs)
             {
                 try
                 {
@@ -224,150 +95,290 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
             System.Diagnostics.Debug.WriteLine($"🎵 Successfully loaded {loadedCount} Phoenix songs");
 
-            // If no Phoenix songs loaded, try the demo
+            // Show a message if no songs were loaded
             if (loadedCount == 0)
             {
-                await LoadDemoFallback();
+                await DisplayAlert("No Songs", "No Phoenix songs could be loaded. Please check that the song files are included in your project.", "OK");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"❌ Error loading Phoenix songs: {ex.Message}");
-            await LoadDemoFallback();
-        }
-    }
-
-    private async Task LoadDemoFallback()
-    {
-        try
-        {
-            await using var stream = await FileSystem.OpenAppPackageFileAsync("phoenix_demo.ssc");
-            using var reader = new StreamReader(stream);
-            var content = await reader.ReadToEndAsync();
-            AddSong(SscParser.Parse(content, "phoenix_demo.ssc"));
-            System.Diagnostics.Debug.WriteLine("✅ Demo song loaded as fallback");
-        }
-        catch (Exception ex)
-        {
-            await DisplayAlert("Error", "Could not load any songs. Please check that song files are properly embedded.", "OK");
-        }
-    }
-
-    private async void OnLoadDemoClicked(object? sender, EventArgs e)
-    {
-        SongList.Clear();
-        HasSelection = false;
-        await LoadPhoenixSongsAsync();
-    }
-
-    private async void OnOpenFolderClicked(object? sender, EventArgs e)
-    {
-        try
-        {
-            var result = await FilePicker.Default.PickAsync(new PickOptions
-            {
-                PickerTitle = "Select any file in the folder to load all .ssc files from that folder"
-            });
-            if (result is null) return;
-
-            var folderPath = Path.GetDirectoryName(result.FullPath);
-            if (string.IsNullOrEmpty(folderPath)) return;
-
-            SongList.Clear();
-            HasSelection = false;
-
-            var sscFiles = Directory.GetFiles(folderPath, "*.ssc", SearchOption.AllDirectories);
-            foreach (var sscPath in sscFiles)
-            {
-                try
-                {
-                    var content = await File.ReadAllTextAsync(sscPath);
-                    var song = SscParser.Parse(content, sscPath);
-                    if (song.Charts.Count > 0)
-                        AddSong(song);
-                }
-                catch { /* skip invalid files */ }
-            }
-        }
-        catch (Exception ex)
-        {
-            await DisplayAlert("Error", ex.Message, "OK");
+            System.Diagnostics.Debug.WriteLine($"❌ Failed to load Phoenix songs: {ex.Message}");
+            await DisplayAlert("Error", $"Failed to load songs: {ex.Message}", "OK");
         }
     }
 
     private void AddSong(SscSong song)
     {
-        if (SongList.Any(s => s.Song.SourcePath == song.SourcePath && song.SourcePath is not null))
-            return;
-
-        SongList.Add(new SongListItem { Song = song });
-    }
-
-    private void OnSongSelected(object? sender, SelectionChangedEventArgs e)
-    {
-        if (e.CurrentSelection.FirstOrDefault() is not SongListItem item)
-            return;
-
-        _selectedSong = item.Song;
-        SelectedTitleLabel.Text = item.Song.Title;
-        SelectedArtistLabel.Text = item.Song.Artist;
-
-        ChartPicker.ItemsSource = item.Song.Charts
-            .Select(c => c.ToString())
-            .ToList();
-        ChartPicker.SelectedIndex = item.Song.Charts.Count > 0 ? 0 : -1;
-        _selectedChart = item.Song.Charts.Count > 0 ? item.Song.Charts[0] : null;
-
-        HasSelection = _selectedSong is not null && _selectedChart is not null;
-    }
-
-    private void OnChartChanged(object? sender, EventArgs e)
-    {
-        if (_selectedSong is null || ChartPicker.SelectedIndex < 0) return;
-        _selectedChart = _selectedSong.Charts[ChartPicker.SelectedIndex];
-    }
-
-    private async void OnPlayClicked(object? sender, EventArgs e)
-    {
-        if (_selectedSong is null || _selectedChart is null) return;
-
-        // Pass data via query parameters and Shell navigation
-        var songData = System.Text.Json.JsonSerializer.Serialize(new GamePageData
+        var item = new SongListItem
         {
-            SongTitle = _selectedSong.Title,
-            SongArtist = _selectedSong.Artist,
-            SongSourcePath = _selectedSong.SourcePath,
-            SongMusicPath = _selectedSong.MusicPath,
-            SongBackgroundPath = _selectedSong.BackgroundPath,
-            SongOffsetSeconds = _selectedSong.OffsetSeconds,
-            ChartIndex = Array.IndexOf(_selectedSong.Charts.ToArray(), _selectedChart)
-        });
-
-        await Shell.Current.GoToAsync($"GamePage?songData={Uri.EscapeDataString(songData)}");
+            Song = song,
+            Title = song.Title,
+            Artist = song.Artist,
+            ChartSummary = GenerateChartSummary(song)
+        };
+        SongList.Add(item);
     }
 
-    public new event PropertyChangedEventHandler? PropertyChanged;
-
-    private void OnPropertyChanged([CallerMemberName] string? name = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-
-    public sealed class SongListItem
+    private void PopulateCharts(SscSong song)
     {
-        public required SscSong Song { get; init; }
-        public string Title => Song.Title;
-        public string Artist => Song.Artist;
-        public string ChartSummary => string.Join(", ",
-            Song.Charts.Select(c => $"{c.Difficulty} {c.Meter}"));
+        ChartPicker.Items.Clear();
+        _currentSortedCharts.Clear();
+        SelectedChartBorder.IsVisible = false; // Hide initially
+
+        if (song?.Charts == null || song.Charts.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("No charts available for this song.");
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"🎵 Populating charts for '{song.Title}':");
+
+        // Sort charts by StepType first, then by meter
+        _currentSortedCharts = song.Charts
+            .OrderBy(c => c.StepType?.ToLower() == "pump-single" ? 0 : 1) // Singles first
+            .ThenBy(c => c.Meter)
+            .ToList();
+
+        foreach (var chart in _currentSortedCharts)
+        {
+            var displayText = GetChartDisplayText(chart);
+            ChartPicker.Items.Add(displayText);
+            System.Diagnostics.Debug.WriteLine($"   Added chart: {displayText} (StepType: '{chart.StepType}', Difficulty: '{chart.Difficulty}', Meter: {chart.Meter})");
+        }
+
+        if (ChartPicker.Items.Count > 0)
+        {
+            ChartPicker.SelectedIndex = 0;
+            _selectedChart = _currentSortedCharts.First();
+            System.Diagnostics.Debug.WriteLine($"   Selected first chart: {ChartPicker.Items[0]}");
+
+            // Show the selected chart display
+            UpdateSelectedChartDisplay();
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("   ⚠️ No charts to display");
+        }
     }
 
-    private sealed class GamePageData
+    /// <summary>
+    /// Generates display text for a chart using S/D notation (e.g., "S5", "D12")
+    /// </summary>
+    private static string GetChartDisplayText(SscChart chart)
     {
-        public string SongTitle { get; set; } = "";
-        public string SongArtist { get; set; } = "";
-        public string? SongSourcePath { get; set; }
-        public string SongMusicPath { get; set; } = "";
-        public string SongBackgroundPath { get; set; } = "";
-        public double SongOffsetSeconds { get; set; }
-        public int ChartIndex { get; set; }
+        var stepPrefix = chart.StepType?.ToLower() switch
+        {
+            "pump-single" => "S",
+            "pump-double" => "D",
+            _ => ""
+        };
+
+        if (!string.IsNullOrEmpty(stepPrefix))
+        {
+            return $"{stepPrefix}{chart.Meter}";
+        }
+
+        // Fallback for charts without recognized StepType
+        return string.IsNullOrEmpty(chart.Difficulty)
+            ? $"Level {chart.Meter}"
+            : (chart.Meter > 0
+                ? $"{chart.Difficulty} {chart.Meter}"
+                : chart.Difficulty);
     }
+
+    private static string GenerateChartSummary(SscSong song)
+    {
+        if (song.Charts.Count == 0)
+            return "No charts available";
+
+        // Group by StepType and get range for each
+        var singleCharts = song.Charts
+            .Where(c => c.StepType?.ToLower() == "pump-single" && c.Meter > 0)
+            .Select(c => c.Meter)
+            .OrderBy(d => d)
+            .Distinct()
+            .ToList();
+
+        var doubleCharts = song.Charts
+            .Where(c => c.StepType?.ToLower() == "pump-double" && c.Meter > 0)
+            .Select(c => c.Meter)
+            .OrderBy(d => d)
+            .Distinct()
+            .ToList();
+
+        var summaryParts = new List<string>();
+
+        if (singleCharts.Count > 0)
+        {
+            var sMin = singleCharts.First();
+            var sMax = singleCharts.Last();
+            summaryParts.Add(sMin == sMax ? $"S{sMin}" : $"S{sMin}-{sMax}");
+        }
+
+        if (doubleCharts.Count > 0)
+        {
+            var dMin = doubleCharts.First();
+            var dMax = doubleCharts.Last();
+            summaryParts.Add(dMin == dMax ? $"D{dMin}" : $"D{dMin}-{dMax}");
+        }
+
+        // Fallback for unknown step types
+        var otherCharts = song.Charts
+            .Where(c => c.StepType?.ToLower() != "pump-single" &&
+                       c.StepType?.ToLower() != "pump-double" &&
+                       c.Meter > 0)
+            .Select(c => c.Meter)
+            .OrderBy(d => d)
+            .Distinct()
+            .ToList();
+
+        if (otherCharts.Count > 0)
+        {
+            var oMin = otherCharts.First();
+            var oMax = otherCharts.Last();
+            summaryParts.Add(oMin == oMax ? $"L{oMin}" : $"L{oMin}-{oMax}");
+        }
+
+        if (summaryParts.Count == 0)
+            return $"{song.Charts.Count} chart(s)";
+
+        return $"{string.Join(", ", summaryParts)} • {song.Charts.Count} chart(s)";
+    }
+
+    private async void OnLoadDemoClicked(object sender, EventArgs e)
+    {
+        await LoadPhoenixSongsAsync();
+    }
+
+    private async void OnOpenFolderClicked(object sender, EventArgs e)
+    {
+        try
+        {
+#if WINDOWS
+            await DisplayAlert("Feature Not Available", "External folder support coming soon for Windows!", "OK");
+#else
+            await DisplayAlert("Feature Not Available", "External folder support coming soon!", "OK");
+#endif
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Error", $"Failed to open folder picker: {ex.Message}", "OK");
+        }
+    }
+
+    private void OnSongSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.CurrentSelection.FirstOrDefault() is SongListItem selectedItem)
+        {
+            _selectedSong = selectedItem.Song;
+            SelectedTitleLabel.Text = _selectedSong.Title;
+            SelectedArtistLabel.Text = _selectedSong.Artist;
+
+            PopulateCharts(_selectedSong);
+            HasSelection = true;
+        }
+        else
+        {
+            HasSelection = false;
+            _selectedSong = null;
+            _selectedChart = null;
+            _currentSortedCharts.Clear();
+            ChartPicker.Items.Clear();
+            SelectedChartBorder.IsVisible = false;
+        }
+    }
+
+    private void OnChartChanged(object sender, EventArgs e)
+    {
+        if (_selectedSong == null || ChartPicker.SelectedIndex < 0 || ChartPicker.SelectedIndex >= _currentSortedCharts.Count)
+        {
+            System.Diagnostics.Debug.WriteLine($"⚠️ Chart changed but invalid selection. Index: {ChartPicker.SelectedIndex}, Charts count: {_currentSortedCharts.Count}");
+            SelectedChartBorder.IsVisible = false;
+            return;
+        }
+
+        _selectedChart = _currentSortedCharts[ChartPicker.SelectedIndex];
+        System.Diagnostics.Debug.WriteLine($"📝 Chart changed to: {ChartPicker.Items[ChartPicker.SelectedIndex]} - Notes: {_selectedChart.Notes.Count}");
+
+        // Update the selected chart display
+        UpdateSelectedChartDisplay();
+    }
+
+    private void UpdateSelectedChartDisplay()
+    {
+        if (_selectedChart == null)
+        {
+            SelectedChartBorder.IsVisible = false;
+            return;
+        }
+
+        // Display chart using S/D notation
+        var chartNotation = GetChartDisplayText(_selectedChart);
+        SelectedChartLevelLabel.Text = chartNotation;
+        SelectedChartNotesLabel.Text = $"{_selectedChart.Notes.Count} notes";
+
+        // Show note count for debugging
+        System.Diagnostics.Debug.WriteLine($"📊 Chart {chartNotation} has {_selectedChart.Notes.Count} notes");
+
+        SelectedChartBorder.IsVisible = true;
+    }
+
+    private async void OnPlayClicked(object sender, EventArgs e)
+    {
+        if (_selectedSong == null || _selectedChart == null)
+        {
+            await DisplayAlert("No Selection", "Please select a song and chart first.", "OK");
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Debug.WriteLine($"🎮 Starting game with:");
+            System.Diagnostics.Debug.WriteLine($"   Song: {_selectedSong.Title}");
+            System.Diagnostics.Debug.WriteLine($"   Chart: {_selectedChart.Difficulty} {_selectedChart.Meter}");
+            System.Diagnostics.Debug.WriteLine($"   Scroll Speed: {ScrollSpeed:F1}x");
+
+            var gameData = new GameStartData
+            {
+                Song = _selectedSong,
+                Chart = _selectedChart,
+                ScrollSpeed = ScrollSpeed
+            };
+
+            var queryParams = new Dictionary<string, object>
+            {
+                { "songData", System.Text.Json.JsonSerializer.Serialize(gameData) }
+            };
+
+            await Shell.Current.GoToAsync("GamePage", queryParams);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"❌ Error starting game: {ex.Message}");
+            await DisplayAlert("Error", $"Failed to start game: {ex.Message}", "OK");
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+public class SongListItem
+{
+    public required SscSong Song { get; set; }
+    public required string Title { get; set; }
+    public required string Artist { get; set; }
+    public required string ChartSummary { get; set; }
+}
+
+public class GameStartData
+{
+    public required SscSong Song { get; set; }
+    public required SscChart Chart { get; set; }
+    public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
 }

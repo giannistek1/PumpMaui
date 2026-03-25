@@ -20,6 +20,7 @@ public sealed class RhythmGameEngine
     public int MaxCombo { get; private set; }
     public int Score { get; private set; }
     public string Grade { get; private set; } = "D";
+    public string Plate { get; private set; } = ""; // Add plate property
     public string LastJudgmentText { get; private set; } = "READY";
     public bool FullCombo => _counts[HitJudgment.Bad] == 0 && _counts[HitJudgment.Miss] == 0;
     public double AccuracyPercent => PhoenixScoring.MaxScore == 0 ? 0d : Score / (double)PhoenixScoring.MaxScore * 100d;
@@ -307,7 +308,8 @@ public sealed class RhythmGameEngine
         }
 
         Score = PhoenixScoring.CalculateScore(_counts, _notes.Count);
-        Grade = PhoenixScoring.CalculateGrade(Score, FullCombo);
+        Grade = PhoenixScoring.CalculateGrade(Score); // Updated to not use fullCombo
+        Plate = PhoenixScoring.CalculatePlate(_counts, _notes.Count); // Calculate plate
         LastJudgmentText = judgment.ToString().ToUpperInvariant();
     }
 
@@ -336,6 +338,7 @@ public sealed class RhythmGameEngine
         MaxCombo = 0;
         Score = 0;
         Grade = "D";
+        Plate = ""; // Reset plate
         LastJudgmentText = Chart is null ? "READY" : "SELECT SONG";
         IsPlaying = false;
     }

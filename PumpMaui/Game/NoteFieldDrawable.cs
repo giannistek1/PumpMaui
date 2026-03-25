@@ -32,7 +32,7 @@ public sealed class NoteFieldDrawable : IDrawable
         }
     }
 
-    public double ScrollWindowSeconds { get; set; } = 2.2d;
+    public double ScrollSpeedMultiplier { get; set; } = GameConstants.DefaultScrollSpeed;
     public bool IsLandscapeMode { get; set; } = false;
 
     private static async Task LoadImagesAsync()
@@ -363,9 +363,12 @@ public sealed class NoteFieldDrawable : IDrawable
                 if (!isActiveHold && !isUpcomingHold) continue;
                 if (endDelta < -PhoenixScoring.BadWindowSeconds) continue;
 
+                // Calculate actual scroll window based on multiplier (inverted relationship)
+                var actualScrollWindow = 2.2 / ScrollSpeedMultiplier; // Base 2.2 seconds / multiplier
+
                 // Calculate positions
-                var startNormalized = (float)(startDelta / ScrollWindowSeconds);
-                var endNormalized = (float)(endDelta / ScrollWindowSeconds);
+                var startNormalized = (float)(startDelta / actualScrollWindow);
+                var endNormalized = (float)(endDelta / actualScrollWindow);
 
                 // For active holds, start drawing from the receptor line (current time)
                 float visibleStartY, visibleEndY;
@@ -591,6 +594,10 @@ public sealed class NoteFieldDrawable : IDrawable
     {
         float x = laneGap;
         var travelHeight = fieldBottom - receptorY - 18f;
+
+        // Calculate the actual scroll window based on the speed multiplier
+        var actualScrollWindow = 2.2 / ScrollSpeedMultiplier;
+
         for (var lane = 0; lane < 5; lane++)
         {
             float width = actualWidths[lane];
@@ -598,10 +605,12 @@ public sealed class NoteFieldDrawable : IDrawable
             foreach (var note in _engine.Notes.Where(n => n.Lane == lane && !n.Consumed))
             {
                 var deltaSeconds = note.TimeSeconds - _engine.CurrentTimeSeconds;
-                if (deltaSeconds < -PhoenixScoring.BadWindowSeconds || deltaSeconds > ScrollWindowSeconds)
+
+                // Fixed: Use actualScrollWindow for the visibility check
+                if (deltaSeconds < -PhoenixScoring.BadWindowSeconds || deltaSeconds > actualScrollWindow)
                     continue;
 
-                var normalized = (float)(deltaSeconds / ScrollWindowSeconds);
+                var normalized = (float)(deltaSeconds / actualScrollWindow);
                 var y = receptorY + normalized * travelHeight;
                 var size = MathF.Min(width * 0.62f, 40f);
 

@@ -19,7 +19,7 @@ public partial class GamePage : ContentPage
 
     private readonly RhythmGameEngine _engine = new();
     private readonly NoteFieldDrawable _noteFieldDrawable;
-    private NoteFieldDrawable? _landscapeNoteFieldDrawable;
+    private NoteFieldDrawable? _landscapeNoteFieldDrawable; // Add this line
     private readonly Stopwatch _playbackTimer = new();
     private double _playbackStartOffsetSeconds;
     private SscSong? _song;
@@ -34,6 +34,10 @@ public partial class GamePage : ContentPage
 
         _noteFieldDrawable = new NoteFieldDrawable(_engine);
         NoteFieldView.Drawable = _noteFieldDrawable;
+
+        // Initialize the landscape drawable too
+        _landscapeNoteFieldDrawable = new NoteFieldDrawable(_engine);
+        LandscapeNoteFieldView.Drawable = _landscapeNoteFieldDrawable;
 
         // Build all pads
         BuildPad(PortraitPad);
@@ -52,6 +56,7 @@ public partial class GamePage : ContentPage
         SongMediaElement.MediaEnded += (s, e) =>
             System.Diagnostics.Debug.WriteLine("🎵 MediaElement: Media playback ended");
 
+        // Back to 60 FPS (16ms) for smooth rhythm game experience
         Dispatcher.StartTimer(TimeSpan.FromMilliseconds(16), OnFrame);
     }
 
@@ -78,12 +83,58 @@ public partial class GamePage : ContentPage
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine($"🎮 Raw SongDataJson: {SongDataJson}");
+
+            // First try to deserialize as the new GameStartData format
+            GameStartData? gameStartData = null;
+            try
+            {
+                gameStartData = System.Text.Json.JsonSerializer.Deserialize<GameStartData>(
+                    Uri.UnescapeDataString(SongDataJson));
+                System.Diagnostics.Debug.WriteLine("✅ Successfully deserialized as GameStartData");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ Failed to deserialize as GameStartData: {ex.Message}");
+            }
+
+            if (gameStartData != null)
+            {
+                // New format from SongSelectPage - we already have the song and chart objects
+                _song = gameStartData.Song;
+                _chart = gameStartData.Chart;
+
+                // Set the scroll speed from the song select page on BOTH drawables
+                System.Diagnostics.Debug.WriteLine($"🎮 Setting scroll speed to: {gameStartData.ScrollSpeed:F1}x");
+                _noteFieldDrawable.ScrollSpeedMultiplier = gameStartData.ScrollSpeed;
+                if (_landscapeNoteFieldDrawable != null)
+                {
+                    _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = gameStartData.ScrollSpeed;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"🎮 Loading game with scroll speed: {gameStartData.ScrollSpeed:F1}x");
+                System.Diagnostics.Debug.WriteLine($"   Song: {_song.Title}");
+                System.Diagnostics.Debug.WriteLine($"   Artist: {_song.Artist}");
+                System.Diagnostics.Debug.WriteLine($"   Chart: {_chart.Difficulty} {_chart.Meter}");
+                System.Diagnostics.Debug.WriteLine($"   Chart has {_chart.Notes.Count} notes");
+                System.Diagnostics.Debug.WriteLine($"   Portrait ScrollSpeedMultiplier: {_noteFieldDrawable.ScrollSpeedMultiplier}");
+                System.Diagnostics.Debug.WriteLine($"   Landscape ScrollSpeedMultiplier: {_landscapeNoteFieldDrawable?.ScrollSpeedMultiplier}");
+
+                await LoadSongAndChart();
+                return;
+            }
+
+            // Fallback to old GamePageData format for compatibility
             var gameData = System.Text.Json.JsonSerializer.Deserialize<GamePageData>(
                 Uri.UnescapeDataString(SongDataJson));
 
-            if (gameData is null) return;
+            if (gameData is null)
+            {
+                System.Diagnostics.Debug.WriteLine("❌ Failed to deserialize as both GameStartData and GamePageData");
+                return;
+            }
 
-            System.Diagnostics.Debug.WriteLine($"🎮 Loading game data:");
+            System.Diagnostics.Debug.WriteLine($"🎮 Loading legacy game data:");
             System.Diagnostics.Debug.WriteLine($"   Song: {gameData.SongTitle}");
             System.Diagnostics.Debug.WriteLine($"   Source: {gameData.SongSourcePath}");
             System.Diagnostics.Debug.WriteLine($"   Music: {gameData.SongMusicPath}");
@@ -115,10 +166,31 @@ public partial class GamePage : ContentPage
             }
 
             _chart = _song.Charts[gameData.ChartIndex];
+            await LoadSongAndChart();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"❌ Game loading error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"   Stack trace: {ex.StackTrace}");
+            await DisplayAlert("Error loading game", ex.Message, "OK");
+            await Shell.Current.GoToAsync("..");
+        }
+    }
+
+    private async Task LoadSongAndChart()
+    {
+        if (_song == null || _chart == null) return;
+
+        try
+        {
+            System.Diagnostics.Debug.WriteLine($"🎵 Loading song and chart:");
+            System.Diagnostics.Debug.WriteLine($"   Song: {_song.Title} by {_song.Artist}");
+            System.Diagnostics.Debug.WriteLine($"   Chart: {_chart.Difficulty} {_chart.Meter}");
+            System.Diagnostics.Debug.WriteLine($"   Notes: {_chart.Notes.Count}");
+
             _engine.Load(_song, _chart);
 
-            // Update both portrait and landscape titles
-            TitleLabel.Text = _song.Title;
+            // Update only landscape title (no title in portrait mode)
             LandscapeTitleLabel.Text = _song.Title;
 
             BackgroundPreview.Source = TryCreateBackground(_song);
@@ -127,7 +199,7 @@ public partial class GamePage : ContentPage
             RefreshHud();
             NoteFieldView.Invalidate();
 
-            System.Diagnostics.Debug.WriteLine($"✅ Song loaded: {_song.Title}");
+            System.Diagnostics.Debug.WriteLine($"✅ Song loaded successfully");
             System.Diagnostics.Debug.WriteLine($"   Music path: {_song.MusicPath}");
             System.Diagnostics.Debug.WriteLine($"   Source path: {_song.SourcePath}");
 
@@ -137,9 +209,8 @@ public partial class GamePage : ContentPage
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"❌ Game loading error: {ex.Message}");
-            await DisplayAlert("Error loading game", ex.Message, "OK");
-            await Shell.Current.GoToAsync("..");
+            System.Diagnostics.Debug.WriteLine($"❌ Error in LoadSongAndChart: {ex.Message}");
+            await DisplayAlert("Error", $"Failed to load song and chart: {ex.Message}", "OK");
         }
     }
 
@@ -170,17 +241,62 @@ public partial class GamePage : ContentPage
             ? _playbackTimer.Elapsed.TotalSeconds + _playbackStartOffsetSeconds
             : _engine.CurrentTimeSeconds;
 
-        _engine.Update(elapsedSeconds);
-        RefreshHud();
+        // Store previous state to detect changes
+        var previousScore = _engine.Score;
+        var previousCombo = _engine.Combo;
+        var previousJudgment = _engine.LastJudgmentText;
+        var previousTimeSeconds = _engine.CurrentTimeSeconds;
 
-        // Invalidate both note field views
-        NoteFieldView.Invalidate();
-        LandscapeNoteFieldView?.Invalidate();
+        _engine.Update(elapsedSeconds);
+
+        // Check if anything significant changed that requires HUD update
+        var hudChanged = previousScore != _engine.Score ||
+                        previousCombo != _engine.Combo ||
+                        previousJudgment != _engine.LastJudgmentText;
+
+        // Check if time changed enough to warrant note field redraw (smooth 60 FPS)
+        var timeChanged = Math.Abs(_engine.CurrentTimeSeconds - previousTimeSeconds) > 0.008; // ~120 FPS threshold for very smooth scrolling
+
+        if (hudChanged)
+        {
+            RefreshHud();
+        }
+
+        // Only invalidate note fields when necessary - either time progressed or there was a judgment
+        if (timeChanged || hudChanged)
+        {
+            NoteFieldView.Invalidate();
+            LandscapeNoteFieldView?.Invalidate();
+        }
 
         if (!_engine.IsPlaying && _playbackTimer.IsRunning)
         {
             _playbackTimer.Stop();
-            Dispatcher.Dispatch(async () => await Shell.Current.GoToAsync(".."));
+
+            // Navigate to results page with game results
+            var resultsData = new GameResultsData
+            {
+                SongTitle = _song?.Title ?? "Unknown Song",
+                SongArtist = _song?.Artist ?? "Unknown Artist",
+                ChartDifficulty = _chart?.Difficulty ?? "Unknown",
+                ChartStepType = _chart?.StepType ?? "", // Add StepType
+                ChartMeter = _chart?.Meter ?? 0,
+                Score = _engine.Score,
+                Grade = _engine.Grade,
+                Plate = _engine.Plate,
+                Accuracy = _engine.AccuracyPercent,
+                MaxCombo = _engine.MaxCombo,
+                PerfectCount = _engine.Counts[HitJudgment.Perfect],
+                GreatCount = _engine.Counts[HitJudgment.Great],
+                GoodCount = _engine.Counts[HitJudgment.Good],
+                BadCount = _engine.Counts[HitJudgment.Bad],
+                MissCount = _engine.Counts[HitJudgment.Miss]
+            };
+
+            var resultsJson = System.Text.Json.JsonSerializer.Serialize(resultsData);
+            var encodedResults = Uri.EscapeDataString(resultsJson);
+
+            Dispatcher.Dispatch(async () => await Shell.Current.GoToAsync($"ResultsPage?resultsData={encodedResults}"));
         }
 
         return true;
@@ -218,10 +334,12 @@ public partial class GamePage : ContentPage
                         // Copy embedded asset to temporary file
                         await using var sourceStream = await FileSystem.OpenAppPackageFileAsync(embeddedAudioPath);
 
-                        // Create temporary file
-                        var tempDir = Path.Combine(FileSystem.Current.CacheDirectory, "audio");
-                        Directory.CreateDirectory(tempDir);
+                        // Create a more reliable temporary directory
+                        var tempDir = GetReliableTempDirectory();
                         var tempFile = Path.Combine(tempDir, Path.GetFileName(_song.MusicPath));
+
+                        System.Diagnostics.Debug.WriteLine($"📁 Temp directory: {tempDir}");
+                        System.Diagnostics.Debug.WriteLine($"📁 Target temp file: {tempFile}");
 
                         // Copy to temp file if it doesn't exist or is outdated
                         if (!File.Exists(tempFile))
@@ -229,22 +347,52 @@ public partial class GamePage : ContentPage
                             System.Diagnostics.Debug.WriteLine($"📁 Copying audio to temp file: {tempFile}");
                             await using var targetStream = File.Create(tempFile);
                             await sourceStream.CopyToAsync(targetStream);
+                            System.Diagnostics.Debug.WriteLine($"✅ Successfully copied {sourceStream.Length} bytes");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"📁 Temp file already exists: {tempFile}");
                         }
 
-                        // Load from temporary file
-                        System.Diagnostics.Debug.WriteLine($"🎵 Loading audio from temp file: {tempFile}");
-                        SongMediaElement.Source = MediaSource.FromFile(tempFile);
-                        SongMediaElement.Play();
-                        return;
+                        // Verify the file exists and has content
+                        if (File.Exists(tempFile))
+                        {
+                            var fileInfo = new FileInfo(tempFile);
+                            System.Diagnostics.Debug.WriteLine($"📁 Temp file size: {fileInfo.Length} bytes");
+
+                            if (fileInfo.Length > 0)
+                            {
+                                // Load from temporary file with proper URI encoding for paths with spaces
+                                System.Diagnostics.Debug.WriteLine($"🎵 Loading audio from temp file: {tempFile}");
+
+                                // Use proper file URI encoding to handle spaces and special characters
+                                var fileUri = new Uri(tempFile).AbsoluteUri;
+                                System.Diagnostics.Debug.WriteLine($"🎵 File URI: {fileUri}");
+
+                                SongMediaElement.Source = MediaSource.FromUri(fileUri);
+                                SongMediaElement.Play();
+                                return;
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine($"❌ Temp file is empty: {tempFile}");
+                            }
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"❌ Temp file was not created: {tempFile}");
+                        }
                     }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"❌ Failed to copy embedded audio: {ex.Message}");
-
-                        // Fallback: try direct URI approaches
-                        await TryAlternativeAudioLoading(embeddedAudioPath);
-                        return;
+                        System.Diagnostics.Debug.WriteLine($"   Stack trace: {ex.StackTrace}");
                     }
+
+                    // Fallback: try direct URI approaches
+                    System.Diagnostics.Debug.WriteLine("🔄 Falling back to direct URI loading...");
+                    await TryAlternativeAudioLoading(embeddedAudioPath);
+                    return;
                 }
             }
 
@@ -258,7 +406,12 @@ public partial class GamePage : ContentPage
                     if (File.Exists(candidate))
                     {
                         System.Diagnostics.Debug.WriteLine($"🎵 Loading external audio: {candidate}");
-                        SongMediaElement.Source = MediaSource.FromFile(candidate);
+
+                        // Use proper file URI encoding for external files too
+                        var fileUri = new Uri(candidate).AbsoluteUri;
+                        System.Diagnostics.Debug.WriteLine($"🎵 External file URI: {fileUri}");
+
+                        SongMediaElement.Source = MediaSource.FromUri(fileUri);
                         SongMediaElement.Play();
                         return;
                     }
@@ -270,7 +423,70 @@ public partial class GamePage : ContentPage
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"❌ Audio loading error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"   Stack trace: {ex.StackTrace}");
         }
+    }
+
+    /// <summary>
+    /// Gets a reliable temporary directory, falling back to alternatives if the default cache directory is invalid
+    /// </summary>
+    private static string GetReliableTempDirectory()
+    {
+        try
+        {
+            // Try the default MAUI cache directory first
+            var defaultCacheDir = FileSystem.Current.CacheDirectory;
+            System.Diagnostics.Debug.WriteLine($"📁 Default cache directory: {defaultCacheDir}");
+
+            // Check if the directory path looks valid and doesn't contain problematic patterns
+            if (!defaultCacheDir.Contains("User Name", StringComparison.OrdinalIgnoreCase) &&
+                !defaultCacheDir.Contains("UserName", StringComparison.OrdinalIgnoreCase))
+            {
+                var audioDir = Path.Combine(defaultCacheDir, "audio");
+                Directory.CreateDirectory(audioDir);
+                return audioDir;
+            }
+
+            System.Diagnostics.Debug.WriteLine("⚠️ Default cache directory contains placeholder username, using fallback");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to use default cache directory: {ex.Message}");
+        }
+
+        // Fallback 1: Use system temp directory
+        try
+        {
+            var systemTempDir = Path.GetTempPath();
+            var appTempDir = Path.Combine(systemTempDir, "PumpMaui", "audio");
+            System.Diagnostics.Debug.WriteLine($"📁 Using system temp directory: {appTempDir}");
+            Directory.CreateDirectory(appTempDir);
+            return appTempDir;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to use system temp directory: {ex.Message}");
+        }
+
+        // Fallback 2: Use user's temp directory with proper username
+        try
+        {
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var appTempDir = Path.Combine(userProfile, "AppData", "Local", "Temp", "PumpMaui", "audio");
+            System.Diagnostics.Debug.WriteLine($"📁 Using user temp directory: {appTempDir}");
+            Directory.CreateDirectory(appTempDir);
+            return appTempDir;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to use user temp directory: {ex.Message}");
+        }
+
+        // Fallback 3: Use current directory (last resort)
+        var currentDir = Path.Combine(Directory.GetCurrentDirectory(), "temp", "audio");
+        System.Diagnostics.Debug.WriteLine($"📁 Using current directory fallback: {currentDir}");
+        Directory.CreateDirectory(currentDir);
+        return currentDir;
     }
 
     private async Task TryAlternativeAudioLoading(string embeddedAudioPath)
@@ -349,33 +565,94 @@ public partial class GamePage : ContentPage
     {
         var scoreText = _engine.Score.ToString("D7");
         var gradeText = _engine.Grade;
+        var plateText = _engine.Plate; // Add plate text
         var accuracyText = $"{_engine.AccuracyPercent:0.00}%";
         var judgmentText = _engine.LastJudgmentText;
-        var comboText = $"{_engine.Combo} COMBO";
         var countsText = $"PERFECT {_engine.Counts[HitJudgment.Perfect]} • GREAT {_engine.Counts[HitJudgment.Great]} • GOOD {_engine.Counts[HitJudgment.Good]} • BAD {_engine.Counts[HitJudgment.Bad]} • MISS {_engine.Counts[HitJudgment.Miss]}";
 
-        // Update portrait HUD
-        ScoreLabel.Text = scoreText;
-        GradeLabel.Text = gradeText;
-        AccuracyLabel.Text = accuracyText;
-        JudgmentLabel.Text = judgmentText;
-        ComboLabel.Text = comboText;
-        CountsLabel.Text = countsText;
+        // Update only portrait counts label (no header in portrait mode)
+        PortraitCountsLabel.Text = countsText;
 
         // Update landscape HUD
         LandscapeScoreLabel.Text = scoreText;
         LandscapeGradeLabel.Text = gradeText;
+        LandscapeGradeLabel.TextColor = PhoenixScoring.GetGradeColor(gradeText); // Add grade coloring
         LandscapeAccuracyLabel.Text = accuracyText;
-        LandscapeJudgmentLabel.Text = judgmentText;
-        LandscapeComboLabel.Text = comboText;
         LandscapeCountsLabel.Text = countsText;
+
+        // Hide startup messages like "GO" and "READY" from the center overlay
+        var shouldShowJudgment = !IsStartupMessage(judgmentText);
+
+        // Update CENTER OVERLAY elements (judgment and combo in middle of screen)
+        CenterJudgmentLabel.IsVisible = shouldShowJudgment;
+        LandscapeCenterJudgmentLabel.IsVisible = shouldShowJudgment;
+
+        if (shouldShowJudgment)
+        {
+            CenterJudgmentLabel.Text = judgmentText;
+            LandscapeCenterJudgmentLabel.Text = judgmentText;
+
+            // Add color coding for different judgments with new color scheme
+            var judgmentColor = judgmentText switch
+            {
+                "PERFECT" => Color.FromArgb("#87CEEB"), // Sky blue (diamond color)
+                "GREAT" => Color.FromArgb("#00FF00"),   // Green
+                "GOOD" => Color.FromArgb("#FFFF00"),    // Yellow
+                "BAD" => Color.FromArgb("#8A2BE2"),     // Purple (Blue Violet)
+                "MISS" => Color.FromArgb("#FF0000"),    // Red
+                _ => Color.FromArgb("#FFE76A")          // Default yellow
+            };
+
+            CenterJudgmentLabel.TextColor = judgmentColor;
+            LandscapeCenterJudgmentLabel.TextColor = judgmentColor;
+        }
+
+        // Show combo only when >= 4
+        var showCombo = _engine.Combo >= 4;
+
+        // Portrait combo labels
+        CenterComboNumberLabel.IsVisible = showCombo;
+        CenterComboTextLabel.IsVisible = showCombo;
+
+        // Landscape combo labels  
+        LandscapeCenterComboNumberLabel.IsVisible = showCombo;
+        LandscapeCenterComboTextLabel.IsVisible = showCombo;
+
+        if (showCombo)
+        {
+            // Set combo number (white color, bigger font)
+            CenterComboNumberLabel.Text = _engine.Combo.ToString();
+            CenterComboNumberLabel.TextColor = Colors.White; // White color
+
+            LandscapeCenterComboNumberLabel.Text = _engine.Combo.ToString();
+            LandscapeCenterComboNumberLabel.TextColor = Colors.White; // White color
+
+            // Set combo text (white color, smaller font)  
+            CenterComboTextLabel.Text = "COMBO";
+            CenterComboTextLabel.TextColor = Colors.White; // White color
+
+            LandscapeCenterComboTextLabel.Text = "COMBO";
+            LandscapeCenterComboTextLabel.TextColor = Colors.White; // White color
+        }
 
         if (_engine.Chart is not null)
         {
             var metaText = $"{_engine.Chart.Difficulty} {_engine.Chart.Meter} • {_engine.Chart.Notes.Count} notes • Max combo {_engine.MaxCombo}";
-            MetaLabel.Text = metaText;
+            // Only update landscape meta label (no title/meta in portrait)
             LandscapeMetaLabel.Text = metaText;
         }
+    }
+
+    // Helper method to determine if a judgment text is a startup message that should be hidden
+    private static bool IsStartupMessage(string judgmentText)
+    {
+        return judgmentText switch
+        {
+            "GO" => true,
+            "READY" => true,
+            "SELECT SONG" => true,
+            _ => false
+        };
     }
 
     private void BuildPad(Grid grid)
@@ -384,79 +661,144 @@ public partial class GamePage : ContentPage
         grid.ColumnDefinitions.Clear();
         grid.Children.Clear();
 
-        // Check if this is a landscape pad (smaller buttons)
+        // Check if this is a landscape pad
         var isLandscapePad = grid == LandscapeLeftPad || grid == LandscapeRightPad;
-        var buttonSizeMultiplier = isLandscapePad ? 0.7f : 1.0f;
 
-        // Make all columns equal width for square buttons
-        grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-        grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-        grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        if (isLandscapePad)
+        {
+            // For landscape pads, use Auto sizing for tight spacing
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+
+            // Minimal spacing for tight button layout
+            grid.RowSpacing = 4;
+            grid.ColumnSpacing = 4;
+
+            // Center the compact grid in its container
+            grid.HorizontalOptions = LayoutOptions.Center;
+            grid.VerticalOptions = LayoutOptions.Center;
+        }
+        else
+        {
+            // Portrait mode - keep original Star sizing
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        }
 
         // ALL pads get the same 5 buttons in diamond formation
         // Players can use either pad to hit any lane
-        AddPadButton(grid, lane: 1, row: 0, column: 0, buttonSizeMultiplier); // Top Left
-        AddPadButton(grid, lane: 3, row: 0, column: 2, buttonSizeMultiplier); // Top Right
-        AddPadButton(grid, lane: 2, row: 1, column: 1, buttonSizeMultiplier); // Center
-        AddPadButton(grid, lane: 0, row: 2, column: 0, buttonSizeMultiplier); // Bottom Left
-        AddPadButton(grid, lane: 4, row: 2, column: 2, buttonSizeMultiplier); // Bottom Right
+        AddPadButton(grid, lane: 1, row: 0, column: 0); // Top Left
+        AddPadButton(grid, lane: 3, row: 0, column: 2); // Top Right
+        AddPadButton(grid, lane: 2, row: 1, column: 1); // Center
+        AddPadButton(grid, lane: 0, row: 2, column: 0); // Bottom Left
+        AddPadButton(grid, lane: 4, row: 2, column: 2); // Bottom Right
     }
 
-    private void AddPadButton(Grid grid, int lane, int row, int column, float sizeMultiplier = 1.0f)
+    private void AddPadButton(Grid grid, int lane, int row, int column)
     {
         var isCenter = lane == 2;
+        var isPortraitPad = grid == PortraitPad;
+        var isLandscapePad = grid == LandscapeLeftPad || grid == LandscapeRightPad;
 
-        // Responsive button sizing
+        if (isLandscapePad)
+        {
+            // For landscape buttons, create compact square buttons with fixed sizes
+            var buttonSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 50 : 65;
+
+            var button = new Button
+            {
+                Text = string.Empty, // No text for landscape buttons
+                FontAttributes = FontAttributes.Bold,
+                BackgroundColor = LaneColors[lane].WithAlpha(0.92f),
+                TextColor = Colors.Black,
+                CornerRadius = 8,
+                Margin = new Thickness(2), // Minimal margin for tight spacing
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                WidthRequest = buttonSize,
+                HeightRequest = buttonSize,
+                Shadow = new Shadow
+                {
+                    Brush = new SolidColorBrush(LaneColors[lane]),
+                    Opacity = 0.65f,
+                    Offset = new Point(0, 2),
+                    Radius = 12
+                }
+            };
+
+            // All buttons are functional - players can use either pad to hit any lane
+            button.Pressed += (_, _) => HandleLaneInput(lane);
+            button.Released += (_, _) => _engine.HandleLaneRelease(lane);
+
+            grid.Add(button, column, row);
+            return;
+        }
+
+        // Portrait pad logic - all buttons same size now
         var baseSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
-            ? (isCenter ? 55 : 75)  // Smaller for mobile
-            : (isCenter ? 70 : 90); // Original size for desktop
-
-        var buttonSize = (int)(baseSize * sizeMultiplier);
+            ? 75  // Same size for all buttons on mobile
+            : 90; // Same size for all buttons on desktop
 
         var baseFontSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
-            ? (isCenter ? 28 : 35)  // Smaller fonts for mobile
-            : (isCenter ? 32 : 40); // Original fonts for desktop
+            ? 35  // Same font size for all buttons on mobile
+            : 40; // Same font size for all buttons on desktop
 
-        var fontSize = (int)(baseFontSize * sizeMultiplier);
-
-        var button = new Button
+        var portraitButton = new Button
         {
-            Text = LaneGlyphs[lane],
-            FontSize = fontSize,
+            Text = LaneGlyphs[lane], // Keep text for portrait buttons
+            FontSize = baseFontSize,
             FontAttributes = FontAttributes.Bold,
-            BackgroundColor = LaneColors[lane].WithAlpha(0.92f),
-            TextColor = Colors.Black,
+            BackgroundColor = LaneColors[lane].WithAlpha(0.4f), // Transparent for portrait
+            TextColor = Colors.White,
             CornerRadius = 8,
-            Margin = new Thickness(4 * sizeMultiplier),
+            Margin = new Thickness(4), // Keep original portrait margin
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
-            WidthRequest = buttonSize,
-            HeightRequest = buttonSize,
+            WidthRequest = baseSize,
+            HeightRequest = baseSize,
             Shadow = new Shadow
             {
                 Brush = new SolidColorBrush(LaneColors[lane]),
-                Opacity = 0.65f,
+                Opacity = 0.3f,
                 Offset = new Point(0, 2),
-                Radius = 12 * sizeMultiplier
+                Radius = 12
             }
         };
 
         // All buttons are functional - players can use either pad to hit any lane
-        button.Pressed += (_, _) => HandleLaneInput(lane);
-        button.Released += (_, _) => _engine.HandleLaneRelease(lane);
+        portraitButton.Pressed += (_, _) => HandleLaneInput(lane);
+        portraitButton.Released += (_, _) => _engine.HandleLaneRelease(lane);
 
-        grid.Add(button, column, row);
+        grid.Add(portraitButton, column, row);
     }
 
     private void HandleLaneInput(int lane)
     {
+        var previousScore = _engine.Score;
+        var previousCombo = _engine.Combo;
+        var previousJudgment = _engine.LastJudgmentText;
+
         _engine.HandleLaneHit(lane);
-        RefreshHud();
-        NoteFieldView.Invalidate();
-        LandscapeNoteFieldView?.Invalidate();
+
+        // Only update HUD and invalidate if something actually changed
+        var somethingChanged = previousScore != _engine.Score ||
+                              previousCombo != _engine.Combo ||
+                              previousJudgment != _engine.LastJudgmentText;
+
+        if (somethingChanged)
+        {
+            RefreshHud();
+            NoteFieldView.Invalidate();
+            LandscapeNoteFieldView?.Invalidate();
+        }
 
         // Maintain focus on key catcher
         FocusKeyCatcher();
@@ -604,5 +946,31 @@ public partial class GamePage : ContentPage
         public string SongBackgroundPath { get; set; } = "";
         public double SongOffsetSeconds { get; set; }
         public int ChartIndex { get; set; }
+    }
+
+    private sealed class GameStartData
+    {
+        public SscSong Song { get; set; } = null!;
+        public SscChart Chart { get; set; } = null!;
+        public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
+    }
+
+    private sealed class GameResultsData
+    {
+        public string SongTitle { get; set; } = "";
+        public string SongArtist { get; set; } = "";
+        public string ChartDifficulty { get; set; } = "";
+        public string ChartStepType { get; set; } = ""; // Add this new property
+        public int ChartMeter { get; set; }
+        public int Score { get; set; }
+        public string Grade { get; set; } = "";
+        public string Plate { get; set; } = "";
+        public double Accuracy { get; set; }
+        public int MaxCombo { get; set; }
+        public int PerfectCount { get; set; }
+        public int GreatCount { get; set; }
+        public int GoodCount { get; set; }
+        public int BadCount { get; set; }
+        public int MissCount { get; set; }
     }
 }

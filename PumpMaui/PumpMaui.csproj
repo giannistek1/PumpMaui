@@ -104,6 +104,9 @@
       <MauiXaml Update="GamePage.xaml">
         <Generator>MSBuild:Compile</Generator>
       </MauiXaml>
+      <MauiXaml Update="ResultsPage.xaml">
+        <Generator>MSBuild:Compile</Generator>
+      </MauiXaml>
       <MauiXaml Update="SongSelectPage.xaml">
         <Generator>MSBuild:Compile</Generator>
       </MauiXaml>

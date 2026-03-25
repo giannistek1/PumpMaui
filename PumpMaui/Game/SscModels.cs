@@ -16,6 +16,7 @@ public sealed class SscSong
 
 public sealed class SscChart
 {
+    /// <summary> Usually pump-single, pump-double </summary>
     public string StepType { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
     public string Difficulty { get; init; } = string.Empty;
