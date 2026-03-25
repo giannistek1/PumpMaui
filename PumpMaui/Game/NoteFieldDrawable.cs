@@ -18,7 +18,10 @@ public sealed class NoteFieldDrawable : IDrawable
     private static IImage? _yellowCenterImage;
     private static IImage? _blueArrowDlImage;
     private static IImage? _redArrowTlImage;
-    private static bool _imagesInitialized = false;
+
+    // Fixed race condition: use Task to ensure proper initialization
+    private static Task? _loadingTask;
+    private static bool _imagesLoaded = false;
 
     // Debug flag for note borders (default: false = no borders)
     public bool ShowNoteBorders { get; set; } = false;
@@ -26,9 +29,10 @@ public sealed class NoteFieldDrawable : IDrawable
     public NoteFieldDrawable(RhythmGameEngine engine)
     {
         _engine = engine;
-        if (!_imagesInitialized)
+        // Fix race condition: ensure loading task starts only once
+        if (_loadingTask == null)
         {
-            _ = LoadImagesAsync();
+            _loadingTask = LoadImagesAsync();
         }
     }
 
@@ -37,7 +41,7 @@ public sealed class NoteFieldDrawable : IDrawable
 
     private static async Task LoadImagesAsync()
     {
-        if (_imagesInitialized) return;
+        if (_imagesLoaded) return;
 
         try
         {
@@ -46,7 +50,7 @@ public sealed class NoteFieldDrawable : IDrawable
             // Debug: List available files in the app package
             await ListAvailableFiles();
 
-            // For MAUI, images in Resources/Images are available directly by filename
+            // Load from Resources/Raw using MauiAsset approach
             _yellowCenterImage = await LoadMauiAsset("yellow_center.png");
             System.Diagnostics.Debug.WriteLine($"Yellow center image loaded: {_yellowCenterImage != null}");
 
@@ -57,15 +61,16 @@ public sealed class NoteFieldDrawable : IDrawable
             System.Diagnostics.Debug.WriteLine($"Red arrow image loaded: {_redArrowTlImage != null}");
 
             System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Yellow: {_yellowCenterImage != null}, Blue: {_blueArrowDlImage != null}, Red: {_redArrowTlImage != null}");
+
+            // Only set to true after all images are successfully processed
+            _imagesLoaded = true;
         }
         catch (Exception ex)
         {
             // Fallback to drawn shapes if images can't be loaded
             System.Diagnostics.Debug.WriteLine($"❌ Failed to load note images: {ex.Message}");
-        }
-        finally
-        {
-            _imagesInitialized = true;
+            // Set loaded to true even on failure to avoid repeated attempts
+            _imagesLoaded = true;
         }
     }
 
@@ -121,9 +126,9 @@ public sealed class NoteFieldDrawable : IDrawable
                     var resourceNames = new List<string>();
                     foreach (var name in possibleNames)
                     {
-                        resourceNames.Add($"PumpMaui.Resources.Images.{name}");
-                        resourceNames.Add($"Resources.Images.{name}");
-                        resourceNames.Add($"Images.{name}");
+                        resourceNames.Add($"PumpMaui.Resources.Raw.{name}");
+                        resourceNames.Add($"Resources.Raw.{name}");
+                        resourceNames.Add($"Raw.{name}");
                         resourceNames.Add(name);
                     }
 
@@ -162,12 +167,16 @@ public sealed class NoteFieldDrawable : IDrawable
 
             if (stream != null)
             {
-                System.Diagnostics.Debug.WriteLine($"  🎯 Stream obtained from {successfulName}, length: {stream.Length} bytes");
+                System.Diagnostics.Debug.WriteLine($"  🎯 Stream obtained from {successfulName}");
 
                 using (stream)
                 {
-                    var bytes = new byte[stream.Length];
-                    await stream.ReadAsync(bytes, 0, (int)stream.Length);
+                    // Fix Android stream.Length issue: use MemoryStream + CopyToAsync
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms);
+                    var bytes = ms.ToArray();
+
+                    System.Diagnostics.Debug.WriteLine($"  📏 Copied {bytes.Length} bytes to memory stream");
 
                     var imageLoadingService = GetImageLoadingService();
                     if (imageLoadingService != null)

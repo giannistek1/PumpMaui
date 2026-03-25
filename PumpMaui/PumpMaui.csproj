@@ -113,7 +113,14 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Folder Include="Resources\Images\" />
       <Folder Include="Songs\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <MauiImage Include="Resources\Raw\blue_arrow_dl.png" />
+      <MauiImage Include="Resources\Raw\red_arrow_tl.png" />
+      <MauiImage Include="Resources\Raw\yellow_center.png" />
     </ItemGroup>
 
 </Project>
