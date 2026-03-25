@@ -310,8 +310,12 @@ public partial class GamePage : ContentPage
 
     private async void PlaySongAudio()
     {
+        // Properly reset MediaElement state to fix replay issues
         SongMediaElement.Stop();
         SongMediaElement.Source = null;
+
+        // Add a small delay to ensure MediaElement is fully reset
+        await Task.Delay(50);
 
         if (_song is null || string.IsNullOrWhiteSpace(_song.MusicPath)) return;
 
@@ -336,23 +340,19 @@ public partial class GamePage : ContentPage
 
                         // Create a more reliable temporary directory
                         var tempDir = GetReliableTempDirectory();
-                        var tempFile = Path.Combine(tempDir, Path.GetFileName(_song.MusicPath));
+
+                        // Create unique filename each time to avoid MediaElement caching issues
+                        var uniqueFileName = $"{Path.GetFileNameWithoutExtension(_song.MusicPath)}_{DateTime.Now.Ticks}{Path.GetExtension(_song.MusicPath)}";
+                        var tempFile = Path.Combine(tempDir, uniqueFileName);
 
                         System.Diagnostics.Debug.WriteLine($"📁 Temp directory: {tempDir}");
                         System.Diagnostics.Debug.WriteLine($"📁 Target temp file: {tempFile}");
 
-                        // Copy to temp file if it doesn't exist or is outdated
-                        if (!File.Exists(tempFile))
-                        {
-                            System.Diagnostics.Debug.WriteLine($"📁 Copying audio to temp file: {tempFile}");
-                            await using var targetStream = File.Create(tempFile);
-                            await sourceStream.CopyToAsync(targetStream);
-                            System.Diagnostics.Debug.WriteLine($"✅ Successfully copied {sourceStream.Length} bytes");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"📁 Temp file already exists: {tempFile}");
-                        }
+                        // Always copy to a new temp file to ensure MediaElement loads properly
+                        System.Diagnostics.Debug.WriteLine($"📁 Copying audio to temp file: {tempFile}");
+                        await using var targetStream = File.Create(tempFile);
+                        await sourceStream.CopyToAsync(targetStream);
+                        System.Diagnostics.Debug.WriteLine($"✅ Successfully copied {sourceStream.Length} bytes");
 
                         // Verify the file exists and has content
                         if (File.Exists(tempFile))
@@ -451,89 +451,78 @@ public partial class GamePage : ContentPage
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to use default cache directory: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to access default cache directory: {ex.Message}");
         }
 
-        // Fallback 1: Use system temp directory
-        try
+        // Fallback options
+        var fallbackDirs = new[]
         {
-            var systemTempDir = Path.GetTempPath();
-            var appTempDir = Path.Combine(systemTempDir, "PumpMaui", "audio");
-            System.Diagnostics.Debug.WriteLine($"📁 Using system temp directory: {appTempDir}");
-            Directory.CreateDirectory(appTempDir);
-            return appTempDir;
-        }
-        catch (Exception ex)
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PumpMaui", "audio"),
+            Path.Combine(Path.GetTempPath(), "PumpMaui", "audio"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PumpMaui", "audio")
+        };
+
+        foreach (var dir in fallbackDirs)
         {
-            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to use system temp directory: {ex.Message}");
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"📁 Trying fallback directory: {dir}");
+                Directory.CreateDirectory(dir);
+                return dir;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ Failed to create fallback directory {dir}: {ex.Message}");
+            }
         }
 
-        // Fallback 2: Use user's temp directory with proper username
-        try
-        {
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var appTempDir = Path.Combine(userProfile, "AppData", "Local", "Temp", "PumpMaui", "audio");
-            System.Diagnostics.Debug.WriteLine($"📁 Using user temp directory: {appTempDir}");
-            Directory.CreateDirectory(appTempDir);
-            return appTempDir;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"⚠️ Failed to use user temp directory: {ex.Message}");
-        }
-
-        // Fallback 3: Use current directory (last resort)
-        var currentDir = Path.Combine(Directory.GetCurrentDirectory(), "temp", "audio");
-        System.Diagnostics.Debug.WriteLine($"📁 Using current directory fallback: {currentDir}");
-        Directory.CreateDirectory(currentDir);
-        return currentDir;
+        // Last resort - use system temp
+        System.Diagnostics.Debug.WriteLine("📁 Using system temp directory as last resort");
+        return Path.GetTempPath();
     }
 
+    /// <summary>
+    /// Try alternative methods to load embedded audio when the primary method fails
+    /// </summary>
     private async Task TryAlternativeAudioLoading(string embeddedAudioPath)
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine("🔄 Trying alternative audio loading methods...");
+            // Method 1: Try direct ms-appx URI (works on some platforms)
+            var msAppxUri = $"ms-appx:///{embeddedAudioPath}";
+            System.Diagnostics.Debug.WriteLine($"🔄 Trying ms-appx URI: {msAppxUri}");
 
-            // Try different URI formats that might work on different platforms
-            var uriFormats = new[]
+            SongMediaElement.Source = MediaSource.FromUri(msAppxUri);
+            SongMediaElement.Play();
+
+            // Wait a bit to see if it works
+            await Task.Delay(500);
+            if (SongMediaElement.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing ||
+                SongMediaElement.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Buffering)
             {
-                $"ms-appx:///{embeddedAudioPath}",
-                $"ms-appdata:///local/{embeddedAudioPath}",
-                $"file:///android_asset/{embeddedAudioPath}", // Android
-                embeddedAudioPath, // Direct path
-                $"/{embeddedAudioPath}" // Path with leading slash
-            };
-
-            foreach (var uriFormat in uriFormats)
-            {
-                try
-                {
-                    System.Diagnostics.Debug.WriteLine($"🎵 Trying URI format: {uriFormat}");
-                    SongMediaElement.Source = MediaSource.FromUri(uriFormat);
-                    SongMediaElement.Play();
-
-                    // Wait a moment to see if it works
-                    await Task.Delay(500);
-
-                    if (SongMediaElement.CurrentState != CommunityToolkit.Maui.Core.MediaElementState.Failed)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"✅ Audio loaded successfully with URI: {uriFormat}");
-                        return;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"❌ URI format failed {uriFormat}: {ex.Message}");
-                }
+                System.Diagnostics.Debug.WriteLine("✅ ms-appx URI method worked!");
+                return;
             }
 
-            System.Diagnostics.Debug.WriteLine("❌ All alternative audio loading methods failed");
+            // Method 2: Try embedded resource approach
+            System.Diagnostics.Debug.WriteLine("🔄 Trying embedded resource method...");
+            SongMediaElement.Source = MediaSource.FromResource(embeddedAudioPath);
+            SongMediaElement.Play();
+
+            await Task.Delay(500);
+            if (SongMediaElement.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing ||
+                SongMediaElement.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Buffering)
+            {
+                System.Diagnostics.Debug.WriteLine("✅ Embedded resource method worked!");
+                return;
+            }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"❌ Alternative audio loading error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"❌ Alternative audio loading failed: {ex.Message}");
         }
+
+        System.Diagnostics.Debug.WriteLine("❌ All audio loading methods failed");
     }
 
     private void OnPageSizeChanged(object? sender, EventArgs e)

@@ -296,7 +296,9 @@ public sealed class NoteFieldDrawable : IDrawable
         var topMargin = IsLandscapeMode ? 8f : 24f;
         var bottomMargin = IsLandscapeMode ? 8f : 26f;
         var receptorY = IsLandscapeMode ? 40f : 92f;
-        var laneGap = IsLandscapeMode ? 6f : 10f;
+
+        // Ultra-tight lane spacing - minimal gaps for maximum closeness
+        var laneGap = IsLandscapeMode ? 0.5f : 0.5f;
 
         // Smaller lane widths for landscape
         float[] laneWidths = IsLandscapeMode ?
@@ -304,7 +306,8 @@ public sealed class NoteFieldDrawable : IDrawable
             new[] { 1f, 1f, 1f, 1f, 1f };
 
         float total = laneWidths.Sum();
-        float unit = (dirtyRect.Width - laneGap * 6f) / total;
+        // Reduced multiplier for tighter spacing calculation - was 6f, now 4f
+        float unit = (dirtyRect.Width - laneGap * 4f) / total;
         float[] actualWidths = laneWidths.Select(w => w * unit).ToArray();
 
         var fieldBottom = dirtyRect.Height - bottomMargin;
@@ -469,7 +472,18 @@ public sealed class NoteFieldDrawable : IDrawable
                 glow = Math.Max(glow, pulseGlow);
             }
 
-            var receptorSize = MathF.Min(width * 0.72f, 52f);
+            // Different sizing for portrait vs landscape mode
+            float receptorSize;
+            if (IsLandscapeMode)
+            {
+                // Landscape: 90% width with max 50f
+                receptorSize = MathF.Min(width * 0.90f, 50f);
+            }
+            else
+            {
+                // Portrait: 80% width with max 44f  
+                receptorSize = MathF.Min(width * 0.80f, 44f);
+            }
 
             canvas.SaveState();
             canvas.Translate(centerX, receptorY);
@@ -621,7 +635,19 @@ public sealed class NoteFieldDrawable : IDrawable
 
                 var normalized = (float)(deltaSeconds / actualScrollWindow);
                 var y = receptorY + normalized * travelHeight;
-                var size = MathF.Min(width * 0.62f, 40f);
+
+                // Different sizing for portrait vs landscape mode
+                float size;
+                if (IsLandscapeMode)
+                {
+                    // Landscape: 90% width with max 50f
+                    size = MathF.Min(width * 0.90f, 50f);
+                }
+                else
+                {
+                    // Portrait: 80% width with max 44f
+                    size = MathF.Min(width * 0.80f, 44f);
+                }
 
                 canvas.SaveState();
                 canvas.Translate(centerX, y);
@@ -865,7 +891,7 @@ public sealed class NoteFieldDrawable : IDrawable
 
         canvas.FontColor = Colors.White.WithAlpha(0.90f);
         canvas.FontSize = 14f;
-        canvas.DrawString("PHOENIX STYLE NOTE FIELD", 12f, 10f, dirtyRect.Width - 24f, 18f, HorizontalAlignment.Left, VerticalAlignment.Center);
-        canvas.DrawString("JUDGE", 12f, receptorY - 6f, dirtyRect.Width - 24f, 16f, HorizontalAlignment.Left, VerticalAlignment.Top);
+        //canvas.DrawString("PHOENIX STYLE NOTE FIELD", 12f, 10f, dirtyRect.Width - 24f, 18f, HorizontalAlignment.Left, VerticalAlignment.Center);
+        //canvas.DrawString("JUDGE", 12f, receptorY - 6f, dirtyRect.Width - 24f, 16f, HorizontalAlignment.Left, VerticalAlignment.Top);
     }
 }

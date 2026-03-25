@@ -126,10 +126,10 @@ public sealed class RhythmGameEngine
             }
             else if (note.Type == NoteType.HoldEnd && _laneHoldActive[note.Lane])
             {
-                // Check if hold end should be automatically triggered
-                if (Math.Abs(delta) <= PhoenixScoring.PerfectWindowSeconds)
+                // Check if hold end should be automatically triggered within any timing window
+                if (Math.Abs(delta) <= PhoenixScoring.BadWindowSeconds)
                 {
-                    // Hold end is within perfect window - auto-complete with perfect timing
+                    // Hold end is within any valid timing window and button is held - always PERFECT
                     note.Consumed = true;
                     _laneHoldActive[note.Lane] = false;
 
@@ -139,37 +139,10 @@ public sealed class RhythmGameEngine
                         note.HoldPartner.IsHoldActive = false;
                     }
 
+                    // Hold tails always give PERFECT when button is held within timing window
                     RegisterJudgment(HitJudgment.Perfect);
                 }
-                else if (Math.Abs(delta) <= PhoenixScoring.GreatWindowSeconds)
-                {
-                    // Hold end is within great window - auto-complete with great timing
-                    note.Consumed = true;
-                    _laneHoldActive[note.Lane] = false;
-
-                    // Find and deactivate the hold start
-                    if (note.HoldPartner != null)
-                    {
-                        note.HoldPartner.IsHoldActive = false;
-                    }
-
-                    RegisterJudgment(HitJudgment.Great);
-                }
-                else if (Math.Abs(delta) <= PhoenixScoring.GoodWindowSeconds)
-                {
-                    // Hold end is within good window - auto-complete with good timing
-                    note.Consumed = true;
-                    _laneHoldActive[note.Lane] = false;
-
-                    // Find and deactivate the hold start
-                    if (note.HoldPartner != null)
-                    {
-                        note.HoldPartner.IsHoldActive = false;
-                    }
-
-                    RegisterJudgment(HitJudgment.Good);
-                }
-                else if (delta > PhoenixScoring.GoodWindowSeconds)
+                else if (delta > PhoenixScoring.BadWindowSeconds)
                 {
                     // Hold was held too long past the end - bad/miss
                     note.Consumed = true;
@@ -261,7 +234,9 @@ public sealed class RhythmGameEngine
             // Start the hold
             _laneHoldActive[lane] = true;
             candidate.IsHoldActive = true;
-            RegisterJudgment(judgment);
+
+            // Hold start notes always give PERFECT judgment when hit within time frame
+            RegisterJudgment(HitJudgment.Perfect);
         }
         else if (candidate.Type == NoteType.Tap)
         {
