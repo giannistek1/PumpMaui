@@ -112,13 +112,19 @@ public partial class GamePage : ContentPage
                     _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = gameStartData.ScrollSpeed;
                 }
 
-                System.Diagnostics.Debug.WriteLine($"🎮 Loading game with scroll speed: {gameStartData.ScrollSpeed:F1}x");
+                // Set the note skin on BOTH drawables
+                System.Diagnostics.Debug.WriteLine($"🎮 Setting note skin to: {gameStartData.NoteSkin}");
+                _noteFieldDrawable.NoteSkin = gameStartData.NoteSkin;
+                if (_landscapeNoteFieldDrawable != null)
+                {
+                    _landscapeNoteFieldDrawable.NoteSkin = gameStartData.NoteSkin;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"🎮 Loading game with scroll speed: {gameStartData.ScrollSpeed:F1}x and note skin: {gameStartData.NoteSkin}");
                 System.Diagnostics.Debug.WriteLine($"   Song: {_song.Title}");
                 System.Diagnostics.Debug.WriteLine($"   Artist: {_song.Artist}");
                 System.Diagnostics.Debug.WriteLine($"   Chart: {_chart.Difficulty} {_chart.Meter}");
                 System.Diagnostics.Debug.WriteLine($"   Chart has {_chart.Notes.Count} notes");
-                System.Diagnostics.Debug.WriteLine($"   Portrait ScrollSpeedMultiplier: {_noteFieldDrawable.ScrollSpeedMultiplier}");
-                System.Diagnostics.Debug.WriteLine($"   Landscape ScrollSpeedMultiplier: {_landscapeNoteFieldDrawable?.ScrollSpeedMultiplier}");
 
                 await LoadSongAndChart();
                 return;
@@ -544,6 +550,9 @@ public partial class GamePage : ContentPage
             if (_landscapeNoteFieldDrawable != null)
             {
                 _landscapeNoteFieldDrawable.IsLandscapeMode = true;
+                // Sync the note skin and scroll speed
+                _landscapeNoteFieldDrawable.NoteSkin = _noteFieldDrawable.NoteSkin;
+                _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = _noteFieldDrawable.ScrollSpeedMultiplier;
             }
 
             // Set the center area to quarter width of screen in landscape mode
@@ -941,6 +950,7 @@ public partial class GamePage : ContentPage
         public SscSong Song { get; set; } = null!;
         public SscChart Chart { get; set; } = null!;
         public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
+        public string NoteSkin { get; set; } = "Default";
     }
 
     private sealed class GameResultsData

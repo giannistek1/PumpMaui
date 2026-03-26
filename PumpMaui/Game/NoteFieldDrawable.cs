@@ -14,10 +14,11 @@ public sealed class NoteFieldDrawable : IDrawable
     ];
     private readonly RhythmGameEngine _engine;
 
-    // Image cache - use alias to resolve ambiguity
-    private static IImage? _yellowCenterImage;
-    private static IImage? _blueArrowDlImage;
-    private static IImage? _redArrowTlImage;
+    // Image cache for different skins
+    private static IImage? _centerPrime, _downleftPrime, _upleftPrime;
+    private static IImage? _centerFiestaEx, _downleftFiestaEx, _upleftFiestaEx;
+    private static IImage? _centerNxa, _downleftNxa, _upleftNxa;
+    private static IImage? _centerOld, _downleftOld, _upleftOld;
 
     // Fixed race condition: use Task to ensure proper initialization
     private static Task? _loadingTask;
@@ -25,6 +26,9 @@ public sealed class NoteFieldDrawable : IDrawable
 
     // Debug flag for note borders (default: false = no borders)
     public bool ShowNoteBorders { get; set; } = false;
+
+    // Note skin property
+    public string NoteSkin { get; set; } = "Prime";
 
     public NoteFieldDrawable(RhythmGameEngine engine)
     {
@@ -45,33 +49,74 @@ public sealed class NoteFieldDrawable : IDrawable
 
         try
         {
-            System.Diagnostics.Debug.WriteLine("🖼️ Starting image loading...");
+            System.Diagnostics.Debug.WriteLine("🖼️ Starting image loading for all note skins...");
 
-            // Debug: List available files in the app package
-            await ListAvailableFiles();
+            // Load Prime skin images
+            _centerPrime = await LoadMauiAsset("center_prime.png");
+            _downleftPrime = await LoadMauiAsset("downleft_prime.png");
+            _upleftPrime = await LoadMauiAsset("upleft_prime.png");
 
-            // Load from Resources/Raw using MauiAsset approach
-            _yellowCenterImage = await LoadMauiAsset("yellow_center.png");
-            System.Diagnostics.Debug.WriteLine($"Yellow center image loaded: {_yellowCenterImage != null}");
+            // Load FiestaEx skin images
+            _centerFiestaEx = await LoadMauiAsset("center_fiestaex.png");
+            _downleftFiestaEx = await LoadMauiAsset("downleft_fiestaex.png");
+            _upleftFiestaEx = await LoadMauiAsset("upleft_fiestaex.png");
 
-            _blueArrowDlImage = await LoadMauiAsset("blue_arrow_dl.png");
-            System.Diagnostics.Debug.WriteLine($"Blue arrow image loaded: {_blueArrowDlImage != null}");
+            // Load NXA skin images
+            _centerNxa = await LoadMauiAsset("center_nxa.png");
+            _downleftNxa = await LoadMauiAsset("downleft_nxa.png");
+            _upleftNxa = await LoadMauiAsset("upleft_nxa.png");
 
-            _redArrowTlImage = await LoadMauiAsset("red_arrow_tl.png");
-            System.Diagnostics.Debug.WriteLine($"Red arrow image loaded: {_redArrowTlImage != null}");
+            // Load old skin images
+            _centerOld = await LoadMauiAsset("center_old.png");
+            _downleftOld = await LoadMauiAsset("downleft_old.png");
+            _upleftOld = await LoadMauiAsset("upleft_old.png");
 
-            System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Yellow: {_yellowCenterImage != null}, Blue: {_blueArrowDlImage != null}, Red: {_redArrowTlImage != null}");
+            System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Prime: Center={_centerPrime != null}, Blue={_downleftPrime != null}, Red={_upleftPrime != null}");
+            System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Fiestaex: Center={_centerFiestaEx != null}, Blue={_downleftFiestaEx != null}, Red={_upleftFiestaEx != null}");
+            System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - NXA: Center={_centerNxa != null}, Blue={_downleftNxa != null}, Red={_upleftNxa != null}");
+            System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Old: Center={_centerOld != null}, Blue={_downleftOld != null}, Red={_upleftOld != null}");
 
-            // Only set to true after all images are successfully processed
             _imagesLoaded = true;
         }
         catch (Exception ex)
         {
-            // Fallback to drawn shapes if images can't be loaded
             System.Diagnostics.Debug.WriteLine($"❌ Failed to load note images: {ex.Message}");
-            // Set loaded to true even on failure to avoid repeated attempts
             _imagesLoaded = true;
         }
+    }
+
+    // Helper method to get the correct images based on selected skin
+    private IImage? GetCenterImage()
+    {
+        return NoteSkin.ToLower() switch
+        {
+            "fiestaex" => _centerFiestaEx,
+            "old" => _centerOld,
+            "nxa" => _centerNxa,
+            _ => _centerPrime // Default to Prime
+        };
+    }
+
+    private IImage? GetBlueArrowImage()
+    {
+        return NoteSkin.ToLower() switch
+        {
+            "fiestaex" => _downleftFiestaEx,
+            "old" => _downleftOld,
+            "nxa" => _downleftNxa,
+            _ => _downleftPrime // Default to Prime
+        };
+    }
+
+    private IImage? GetRedArrowImage()
+    {
+        return NoteSkin.ToLower() switch
+        {
+            "fiestaex" => _upleftFiestaEx,
+            "old" => _upleftOld,
+            "nxa" => _upleftNxa,
+            _ => _upleftPrime // Default to Prime
+        };
     }
 
     private static async Task<IImage?> LoadMauiAsset(string filename)
@@ -517,11 +562,12 @@ public sealed class NoteFieldDrawable : IDrawable
     {
         if (lane == 2)
         {
-            // Center: use yellow-center.png if available
-            if (_yellowCenterImage != null)
+            // Center: use appropriate center image based on skin
+            var centerImage = GetCenterImage();
+            if (centerImage != null)
             {
                 canvas.Alpha = 0.20f + glow * 0.40f;
-                canvas.DrawImage(_yellowCenterImage, -size / 2f, -size / 2f, size, size);
+                canvas.DrawImage(centerImage, -size / 2f, -size / 2f, size, size);
                 canvas.Alpha = 1f; // Reset alpha
 
                 // Add border only if debug flag is enabled
@@ -560,19 +606,19 @@ public sealed class NoteFieldDrawable : IDrawable
 
         switch (lane)
         {
-            case 0: // Bottom-left: blue-arrow-dl.png (no rotation)
-                image = _blueArrowDlImage;
+            case 0: // Bottom-left: blue arrow (no rotation)
+                image = GetBlueArrowImage();
                 break;
-            case 1: // Top-left: red-arrow-tl.png (no rotation)
-                image = _redArrowTlImage;
+            case 1: // Top-left: red arrow (no rotation)
+                image = GetRedArrowImage();
                 break;
-            case 3: // Top-right: red-arrow-tl.png mirrored/rotated 90° clockwise
-                image = _redArrowTlImage;
-                rotation = 90f; // 90 degrees clockwise
+            case 3: // Top-right: red arrow rotated 90° clockwise
+                image = GetRedArrowImage();
+                rotation = 90f;
                 break;
-            case 4: // Bottom-right: blue-arrow-dl.png mirrored/rotated -90°/270° clockwise
-                image = _blueArrowDlImage;
-                rotation = -90f; // -90 degrees (270 degrees clockwise)
+            case 4: // Bottom-right: blue arrow rotated -90°/270° clockwise
+                image = GetBlueArrowImage();
+                rotation = -90f;
                 break;
         }
 
@@ -704,10 +750,11 @@ public sealed class NoteFieldDrawable : IDrawable
     {
         if (lane == 2)
         {
-            // Center: use yellow-center.png if available
-            if (_yellowCenterImage != null)
+            // Center: use appropriate center image based on skin
+            var centerImage = GetCenterImage();
+            if (centerImage != null)
             {
-                canvas.DrawImage(_yellowCenterImage, -size / 2f, -size / 2f, size, size);
+                canvas.DrawImage(centerImage, -size / 2f, -size / 2f, size, size);
 
                 // Add border only if debug flag is enabled
                 if (ShowNoteBorders)
@@ -745,18 +792,18 @@ public sealed class NoteFieldDrawable : IDrawable
 
         switch (lane)
         {
-            case 0: // Bottom-left: blue-arrow-dl.png
-                image = _blueArrowDlImage;
+            case 0: // Bottom-left: blue arrow
+                image = GetBlueArrowImage();
                 break;
-            case 1: // Top-left: red-arrow-tl.png
-                image = _redArrowTlImage;
+            case 1: // Top-left: red arrow
+                image = GetRedArrowImage();
                 break;
-            case 3: // Top-right: red-arrow-tl.png rotated 90° clockwise
-                image = _redArrowTlImage;
+            case 3: // Top-right: red arrow rotated 90° clockwise
+                image = GetRedArrowImage();
                 rotation = 90f;
                 break;
-            case 4: // Bottom-right: blue-arrow-dl.png rotated -90°/270° clockwise
-                image = _blueArrowDlImage;
+            case 4: // Bottom-right: blue arrow rotated -90°/270° clockwise
+                image = GetBlueArrowImage();
                 rotation = -90f;
                 break;
         }

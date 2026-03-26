@@ -40,6 +40,19 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
     public string ScrollSpeedText => $"{_scrollSpeed:F1}x";
 
+    private string _noteSkin = "Prime";
+
+    public string NoteSkin
+    {
+        get => _noteSkin;
+        set
+        {
+            if (_noteSkin == value) return;
+            _noteSkin = value;
+            OnPropertyChanged();
+        }
+    }
+
     public SongSelectPage()
     {
         InitializeComponent();
@@ -47,14 +60,72 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
         // Register the GamePage route for Shell navigation
         Routing.RegisterRoute("GamePage", typeof(GamePage));
+
+        // Handle size changes for responsive layout
+        SizeChanged += OnPageSizeChanged;
     }
 
-    protected override async void OnAppearing()
+    private void OnPageSizeChanged(object sender, EventArgs e)
     {
-        base.OnAppearing();
-        if (SongList.Count == 0)
+        var isLandscape = Width > Height;
+        System.Diagnostics.Debug.WriteLine($"🔄 OnPageSizeChanged: isLandscape={isLandscape}, Width={Width}, Height={Height}");
+
+        // Toggle between portrait and landscape layouts
+        PortraitLayout.IsVisible = !isLandscape;
+        LandscapeLayout.IsVisible = isLandscape;
+
+        if (isLandscape)
         {
-            await LoadPhoenixSongsAsync();
+            System.Diagnostics.Debug.WriteLine("🔄 Switching to landscape mode");
+
+            // Make sure landscape elements exist before accessing them
+            if (LandscapeSongListView != null)
+            {
+                // Sync selection from portrait to landscape WITHOUT triggering events
+                LandscapeSongListView.SelectionChanged -= OnSongSelected;
+                LandscapeSongListView.SelectedItem = SongListView.SelectedItem;
+                LandscapeSongListView.SelectionChanged += OnSongSelected;
+
+                System.Diagnostics.Debug.WriteLine($"🔄 Synced selection to landscape view: {SongListView.SelectedItem != null}");
+            }
+
+            // Sync the landscape labels with portrait labels if there's a selection
+            if (HasSelection && _selectedSong != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"🔄 Syncing selection data for: {_selectedSong.Title}");
+
+                if (LandscapeSelectedTitleLabel != null)
+                    LandscapeSelectedTitleLabel.Text = _selectedSong.Title;
+                if (LandscapeSelectedArtistLabel != null)
+                    LandscapeSelectedArtistLabel.Text = _selectedSong.Artist;
+
+                // Sync chart picker
+                if (LandscapeChartPicker != null)
+                {
+                    LandscapeChartPicker.SelectedIndexChanged -= OnChartChanged;
+                    LandscapeChartPicker.Items.Clear();
+                    foreach (var item in ChartPicker.Items)
+                    {
+                        LandscapeChartPicker.Items.Add(item);
+                    }
+                    LandscapeChartPicker.SelectedIndex = ChartPicker.SelectedIndex;
+                    LandscapeChartPicker.SelectedIndexChanged += OnChartChanged;
+                }
+            }
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("🔄 Switching to portrait mode");
+
+            // Sync from landscape back to portrait
+            if (LandscapeSongListView != null && LandscapeSongListView.SelectedItem != null)
+            {
+                SongListView.SelectionChanged -= OnSongSelected;
+                SongListView.SelectedItem = LandscapeSongListView.SelectedItem;
+                SongListView.SelectionChanged += OnSongSelected;
+
+                System.Diagnostics.Debug.WriteLine($"🔄 Synced selection to portrait view");
+            }
         }
     }
 
@@ -76,20 +147,27 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             {
                 try
                 {
+                    System.Diagnostics.Debug.WriteLine($"📂 Loading: {songPath}");
                     await using var stream = await FileSystem.OpenAppPackageFileAsync(songPath);
                     using var reader = new StreamReader(stream);
                     var content = await reader.ReadToEndAsync();
 
                     var song = SscParser.Parse(content, songPath);
+                    System.Diagnostics.Debug.WriteLine($"   Parsed: '{song.Title}' - Charts: {song.Charts?.Count ?? 0}");
+
                     if (song.Charts.Count > 0)
                     {
                         AddSong(song);
                         loadedCount++;
                     }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"   ⚠️ Skipped '{song.Title}' - no charts");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to load {songPath}: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"❌ Failed to load {songPath}: {ex.Message}");
                 }
             }
 
@@ -115,24 +193,66 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             Song = song,
             Title = song.Title,
             Artist = song.Artist,
-            ChartSummary = GenerateChartSummary(song)
+            ChartSummary = GenerateChartSummary(song),
+            BackgroundImageSource = TryCreateBackground(song)
         };
         SongList.Add(item);
     }
 
-    private void PopulateCharts(SscSong song)
+    private static ImageSource? TryCreateBackground(SscSong song)
     {
-        ChartPicker.Items.Clear();
-        _currentSortedCharts.Clear();
-        SelectedChartBorder.IsVisible = false; // Hide initially
+        if (string.IsNullOrWhiteSpace(song.SourcePath) || string.IsNullOrWhiteSpace(song.BackgroundPath))
+            return null;
 
-        if (song?.Charts == null || song.Charts.Count == 0)
+        try
         {
-            System.Diagnostics.Debug.WriteLine("No charts available for this song.");
+            var baseDirectory = Path.GetDirectoryName(song.SourcePath);
+            if (string.IsNullOrWhiteSpace(baseDirectory)) return null;
+
+            var combined = Path.Combine(baseDirectory,
+                song.BackgroundPath.Replace('/', Path.DirectorySeparatorChar));
+            return File.Exists(combined) ? ImageSource.FromFile(combined) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void PopulateCharts(SscSong? song)
+    {
+        if (song == null)
+        {
+            System.Diagnostics.Debug.WriteLine("❌ PopulateCharts called with NULL song!");
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"🎵 Populating charts for '{song.Title}':");
+        System.Diagnostics.Debug.WriteLine($"🎵 PopulateCharts called for: '{song.Title}' by {song.Artist}");
+        System.Diagnostics.Debug.WriteLine($"🎵 Song.Charts is null: {song.Charts == null}");
+        System.Diagnostics.Debug.WriteLine($"🎵 Song.Charts.Count: {song.Charts?.Count ?? 0}");
+
+        // Clear both chart pickers
+        ChartPicker.Items.Clear();
+        if (LandscapeChartPicker != null)
+            LandscapeChartPicker.Items.Clear();
+
+        _currentSortedCharts.Clear();
+        SelectedChartBorder.IsVisible = false;
+
+        if (song.Charts == null || song.Charts.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"❌ No charts available for this song. Charts null: {song.Charts == null}, Count: {song.Charts?.Count ?? 0}");
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"🎵 Processing {song.Charts.Count} charts for '{song.Title}':");
+
+        // Debug: List all charts found
+        for (int i = 0; i < song.Charts.Count; i++)
+        {
+            var chart = song.Charts[i];
+            System.Diagnostics.Debug.WriteLine($"   Chart {i}: StepType='{chart.StepType}', Difficulty='{chart.Difficulty}', Meter={chart.Meter}, Notes={chart.Notes.Count}");
+        }
 
         // Sort charts by StepType first, then by meter
         _currentSortedCharts = song.Charts
@@ -140,25 +260,31 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             .ThenBy(c => c.Meter)
             .ToList();
 
+        System.Diagnostics.Debug.WriteLine($"🎵 After sorting, have {_currentSortedCharts.Count} charts");
+
         foreach (var chart in _currentSortedCharts)
         {
             var displayText = GetChartDisplayText(chart);
             ChartPicker.Items.Add(displayText);
+            if (LandscapeChartPicker != null)
+                LandscapeChartPicker.Items.Add(displayText);
             System.Diagnostics.Debug.WriteLine($"   Added chart: {displayText} (StepType: '{chart.StepType}', Difficulty: '{chart.Difficulty}', Meter: {chart.Meter})");
         }
 
         if (ChartPicker.Items.Count > 0)
         {
             ChartPicker.SelectedIndex = 0;
+            if (LandscapeChartPicker != null)
+                LandscapeChartPicker.SelectedIndex = 0;
             _selectedChart = _currentSortedCharts.First();
-            System.Diagnostics.Debug.WriteLine($"   Selected first chart: {ChartPicker.Items[0]}");
+            System.Diagnostics.Debug.WriteLine($"   ✅ Selected first chart: {ChartPicker.Items[0]}");
 
-            // Show the selected chart display
+            // Show the selected chart display (portrait only now)
             UpdateSelectedChartDisplay();
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine("   ⚠️ No charts to display");
+            System.Diagnostics.Debug.WriteLine("   ❌ No charts to display after processing");
         }
     }
 
@@ -248,6 +374,19 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
     private async void OnLoadDemoClicked(object sender, EventArgs e)
     {
+        // Clear existing songs before reloading to prevent duplicates
+        SongList.Clear();
+
+        // Clear any current selection
+        _selectedSong = null;
+        _selectedChart = null;
+        HasSelection = false;
+
+        // Clear both CollectionView selections
+        SongListView.SelectedItem = null;
+        if (LandscapeSongListView != null)
+            LandscapeSongListView.SelectedItem = null;
+
         await LoadPhoenixSongsAsync();
     }
 
@@ -269,37 +408,111 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
     private void OnSongSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (e.CurrentSelection.FirstOrDefault() is SongListItem selectedItem)
-        {
-            _selectedSong = selectedItem.Song;
-            SelectedTitleLabel.Text = _selectedSong.Title;
-            SelectedArtistLabel.Text = _selectedSong.Artist;
+        // Debug output
+        System.Diagnostics.Debug.WriteLine($"🎵 OnSongSelected called from {(sender == SongListView ? "Portrait" : "Landscape")}. Current selection count: {e.CurrentSelection.Count}");
 
-            PopulateCharts(_selectedSong);
-            HasSelection = true;
-        }
-        else
+        // Handle selection from either CollectionView
+        var selectedItem = e.CurrentSelection.FirstOrDefault() as SongListItem;
+
+        if (selectedItem == null)
         {
-            HasSelection = false;
+            System.Diagnostics.Debug.WriteLine("🎵 No selection or selection was cleared");
+            // No selection or selection was cleared
             _selectedSong = null;
             _selectedChart = null;
-            _currentSortedCharts.Clear();
-            ChartPicker.Items.Clear();
-            SelectedChartBorder.IsVisible = false;
+            HasSelection = false;
+            return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"🎵 Song selected: {selectedItem.Title} by {selectedItem.Artist}");
+
+        if (selectedItem.Song == null)
+        {
+            System.Diagnostics.Debug.WriteLine("❌ selectedItem.Song is NULL! This is the problem.");
+            DisplayAlert("Error", "Selected song data is corrupted. Please restart the app.", "OK");
+            return;
+        }
+
+        // Check if the same song was selected again (to allow deselection)
+        if (_selectedSong == selectedItem.Song)
+        {
+            System.Diagnostics.Debug.WriteLine($"🎵 Same song selected again, deselecting");
+            // Clear the selection immediately and return - don't trigger more events
+            _selectedSong = null;
+            _selectedChart = null;
+            HasSelection = false;
+
+            // Clear the selection in both views WITHOUT triggering events
+            SongListView.SelectionChanged -= OnSongSelected;
+            SongListView.SelectedItem = null;
+            SongListView.SelectionChanged += OnSongSelected;
+
+            if (LandscapeSongListView != null)
+            {
+                LandscapeSongListView.SelectionChanged -= OnSongSelected;
+                LandscapeSongListView.SelectedItem = null;
+                LandscapeSongListView.SelectionChanged += OnSongSelected;
+            }
+
+            System.Diagnostics.Debug.WriteLine("🎵 Song deselected and cleared");
+            return;
+        }
+
+        // Set the selected song and populate charts
+        _selectedSong = selectedItem.Song;
+        System.Diagnostics.Debug.WriteLine($"🎵 _selectedSong set to: {_selectedSong?.Title ?? "NULL"}");
+        HasSelection = true;
+
+        // Update labels for both orientations
+        SelectedTitleLabel.Text = _selectedSong.Title;
+        SelectedArtistLabel.Text = _selectedSong.Artist;
+
+        // Update landscape labels if they exist
+        if (LandscapeSelectedTitleLabel != null)
+            LandscapeSelectedTitleLabel.Text = _selectedSong.Title;
+        if (LandscapeSelectedArtistLabel != null)
+            LandscapeSelectedArtistLabel.Text = _selectedSong.Artist;
+
+        // Sync selection between views WITHOUT triggering events
+        if (sender == SongListView && LandscapeSongListView != null)
+        {
+            LandscapeSongListView.SelectionChanged -= OnSongSelected;
+            LandscapeSongListView.SelectedItem = selectedItem;
+            LandscapeSongListView.SelectionChanged += OnSongSelected;
+        }
+        else if (sender == LandscapeSongListView && SongListView != null)
+        {
+            SongListView.SelectionChanged -= OnSongSelected;
+            SongListView.SelectedItem = selectedItem;
+            SongListView.SelectionChanged += OnSongSelected;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"🎵 About to call PopulateCharts with song: {_selectedSong?.Title ?? "NULL"}");
+        PopulateCharts(_selectedSong);
+
+        System.Diagnostics.Debug.WriteLine($"🎵 Song selection completed. HasSelection: {HasSelection}");
     }
 
     private void OnChartChanged(object sender, EventArgs e)
     {
-        if (_selectedSong == null || ChartPicker.SelectedIndex < 0 || ChartPicker.SelectedIndex >= _currentSortedCharts.Count)
+        var picker = sender as Picker;
+        var selectedIndex = picker?.SelectedIndex ?? -1;
+
+        if (_selectedSong == null || selectedIndex < 0 || selectedIndex >= _currentSortedCharts.Count)
         {
-            System.Diagnostics.Debug.WriteLine($"⚠️ Chart changed but invalid selection. Index: {ChartPicker.SelectedIndex}, Charts count: {_currentSortedCharts.Count}");
+            System.Diagnostics.Debug.WriteLine($"⚠️ Chart changed but invalid selection. Index: {selectedIndex}, Charts count: {_currentSortedCharts.Count}");
             SelectedChartBorder.IsVisible = false;
             return;
         }
 
-        _selectedChart = _currentSortedCharts[ChartPicker.SelectedIndex];
-        System.Diagnostics.Debug.WriteLine($"📝 Chart changed to: {ChartPicker.Items[ChartPicker.SelectedIndex]} - Notes: {_selectedChart.Notes.Count}");
+        // Sync both pickers
+        if (picker == ChartPicker && LandscapeChartPicker != null)
+            LandscapeChartPicker.SelectedIndex = selectedIndex;
+        else if (picker == LandscapeChartPicker)
+            ChartPicker.SelectedIndex = selectedIndex;
+
+        _selectedChart = _currentSortedCharts[selectedIndex];
+        System.Diagnostics.Debug.WriteLine($"📝 Chart changed to: {ChartPicker.Items[selectedIndex]} - Notes: {_selectedChart.Notes.Count}");
 
         // Update the selected chart display
         UpdateSelectedChartDisplay();
@@ -315,6 +528,8 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
         // Display chart using S/D notation
         var chartNotation = GetChartDisplayText(_selectedChart);
+
+        // Update portrait display (landscape uses the picker directly)
         SelectedChartLevelLabel.Text = chartNotation;
         SelectedChartNotesLabel.Text = $"{_selectedChart.Notes.Count} notes";
 
@@ -338,12 +553,14 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             System.Diagnostics.Debug.WriteLine($"   Song: {_selectedSong.Title}");
             System.Diagnostics.Debug.WriteLine($"   Chart: {_selectedChart.Difficulty} {_selectedChart.Meter}");
             System.Diagnostics.Debug.WriteLine($"   Scroll Speed: {ScrollSpeed:F1}x");
+            System.Diagnostics.Debug.WriteLine($"   Note Skin: {NoteSkin}");
 
             var gameData = new GameStartData
             {
                 Song = _selectedSong,
                 Chart = _selectedChart,
-                ScrollSpeed = ScrollSpeed
+                ScrollSpeed = ScrollSpeed,
+                NoteSkin = NoteSkin
             };
 
             var queryParams = new Dictionary<string, object>
@@ -357,6 +574,39 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         {
             System.Diagnostics.Debug.WriteLine($"❌ Error starting game: {ex.Message}");
             await DisplayAlert("Error", $"Failed to start game: {ex.Message}", "OK");
+        }
+    }
+
+    private void OnCloseSelectionClicked(object sender, EventArgs e)
+    {
+        // Clear the selection from both views
+        SongListView.SelectedItem = null;
+        LandscapeSongListView.SelectedItem = null;
+        _selectedSong = null;
+        _selectedChart = null;
+        HasSelection = false;
+
+        // Clear both chart pickers
+        ChartPicker.Items.Clear();
+        LandscapeChartPicker.Items.Clear();
+        _currentSortedCharts.Clear();
+        SelectedChartBorder.IsVisible = false;
+
+        // Clear all labels
+        SelectedTitleLabel.Text = "";
+        SelectedArtistLabel.Text = "";
+        LandscapeSelectedTitleLabel.Text = "";
+        LandscapeSelectedArtistLabel.Text = "";
+
+        System.Diagnostics.Debug.WriteLine("🎵 Selection cleared by user");
+    }
+
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+        if (SongList.Count == 0)
+        {
+            await LoadPhoenixSongsAsync();
         }
     }
 
@@ -374,6 +624,7 @@ public class SongListItem
     public required string Title { get; set; }
     public required string Artist { get; set; }
     public required string ChartSummary { get; set; }
+    public ImageSource? BackgroundImageSource { get; set; }
 }
 
 public class GameStartData
@@ -381,4 +632,5 @@ public class GameStartData
     public required SscSong Song { get; set; }
     public required SscChart Chart { get; set; }
     public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
+    public string NoteSkin { get; set; } = "Prime";
 }
