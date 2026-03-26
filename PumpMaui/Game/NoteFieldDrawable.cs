@@ -292,21 +292,21 @@ public sealed class NoteFieldDrawable : IDrawable
         canvas.FillColor = Color.FromArgb("#090212");
         canvas.FillRectangle(dirtyRect);
 
-        // Adjust sizing for landscape mode
+        // Adjust sizing for landscape mode - improved spacing
         var topMargin = IsLandscapeMode ? 8f : 24f;
-        var bottomMargin = IsLandscapeMode ? 8f : 26f;
-        var receptorY = IsLandscapeMode ? 40f : 92f;
+        var bottomMargin = IsLandscapeMode ? 12f : 26f; // Slightly more bottom margin for landscape
+        var receptorY = IsLandscapeMode ? 50f : 92f; // Move receptor down more for better travel distance
 
         // Ultra-tight lane spacing - minimal gaps for maximum closeness
-        var laneGap = IsLandscapeMode ? 0.5f : 0.5f;
+        var laneGap = IsLandscapeMode ? 0.3f : 0.5f;
 
-        // Smaller lane widths for landscape
+        // Balanced lane widths - smaller for better pattern recognition
         float[] laneWidths = IsLandscapeMode ?
-            new[] { 0.8f, 0.8f, 0.8f, 0.8f, 0.8f } :
+            new[] { 0.6f, 0.6f, 0.6f, 0.6f, 0.6f } : // Smaller lanes for better pattern visibility
             new[] { 1f, 1f, 1f, 1f, 1f };
 
         float total = laneWidths.Sum();
-        // Reduced multiplier for tighter spacing calculation - was 6f, now 4f
+        // Reduced multiplier for tighter spacing calculation
         float unit = (dirtyRect.Width - laneGap * 4f) / total;
         float[] actualWidths = laneWidths.Select(w => w * unit).ToArray();
 
@@ -375,8 +375,10 @@ public sealed class NoteFieldDrawable : IDrawable
                 if (!isActiveHold && !isUpcomingHold) continue;
                 if (endDelta < -PhoenixScoring.BadWindowSeconds) continue;
 
-                // Calculate actual scroll window based on multiplier (inverted relationship)
-                var actualScrollWindow = 2.2 / ScrollSpeedMultiplier; // Base 2.2 seconds / multiplier
+                // Calculate actual scroll window based on multiplier (inverted relationship) - extended for landscape
+                var actualScrollWindow = IsLandscapeMode ?
+                    3.0 / ScrollSpeedMultiplier :  // Extended for landscape
+                    2.2 / ScrollSpeedMultiplier;   // Original for portrait
 
                 // Calculate positions
                 var startNormalized = (float)(startDelta / actualScrollWindow);
@@ -404,8 +406,8 @@ public sealed class NoteFieldDrawable : IDrawable
                 // Skip if hold would be invisible
                 if (visibleStartY >= visibleEndY) continue;
 
-                // Draw hold body with enhanced visual for active holds
-                var holdWidth = width * 0.65f;
+                // Draw hold body with enhanced visual for active holds - thinner for landscape
+                var holdWidth = IsLandscapeMode ? width * 0.60f : width * 0.65f; // Thinner holds for landscape
                 var isHoldCurrentlyActive = _engine.IsLaneHoldActive(lane);
 
                 // Different colors for active vs upcoming holds
@@ -472,12 +474,12 @@ public sealed class NoteFieldDrawable : IDrawable
                 glow = Math.Max(glow, pulseGlow);
             }
 
-            // Different sizing for portrait vs landscape mode
+            // Smaller receptors for landscape to match note sizing
             float receptorSize;
             if (IsLandscapeMode)
             {
-                // Landscape: 90% width with max 50f
-                receptorSize = MathF.Min(width * 0.90f, 50f);
+                // Landscape: smaller receptors to match smaller notes
+                receptorSize = MathF.Min(width * 0.75f, 38f);
             }
             else
             {
@@ -618,8 +620,10 @@ public sealed class NoteFieldDrawable : IDrawable
         float x = laneGap;
         var travelHeight = fieldBottom - receptorY - 18f;
 
-        // Calculate the actual scroll window based on the speed multiplier
-        var actualScrollWindow = 2.2 / ScrollSpeedMultiplier;
+        // Calculate the actual scroll window based on the speed multiplier - extended for landscape
+        var actualScrollWindow = IsLandscapeMode ?
+            3.0 / ScrollSpeedMultiplier :  // Extended scroll window for landscape - more time to read patterns
+            2.2 / ScrollSpeedMultiplier;   // Original for portrait
 
         for (var lane = 0; lane < 5; lane++)
         {
@@ -636,12 +640,12 @@ public sealed class NoteFieldDrawable : IDrawable
                 var normalized = (float)(deltaSeconds / actualScrollWindow);
                 var y = receptorY + normalized * travelHeight;
 
-                // Different sizing for portrait vs landscape mode
+                // Smaller notes for landscape to improve pattern recognition
                 float size;
                 if (IsLandscapeMode)
                 {
-                    // Landscape: 90% width with max 50f
-                    size = MathF.Min(width * 0.90f, 50f);
+                    // Landscape: smaller notes for better pattern visibility and spacing
+                    size = MathF.Min(width * 0.75f, 35f);
                 }
                 else
                 {

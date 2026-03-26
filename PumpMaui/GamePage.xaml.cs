@@ -190,9 +190,6 @@ public partial class GamePage : ContentPage
 
             _engine.Load(_song, _chart);
 
-            // Update only landscape title (no title in portrait mode)
-            LandscapeTitleLabel.Text = _song.Title;
-
             BackgroundPreview.Source = TryCreateBackground(_song);
             LandscapeBackgroundPreview.Source = BackgroundPreview.Source;
 
@@ -542,8 +539,27 @@ public partial class GamePage : ContentPage
                 LandscapeNoteFieldView.Drawable = _landscapeNoteFieldDrawable;
             }
 
+            // Set landscape mode flag on both drawables
+            _noteFieldDrawable.IsLandscapeMode = true;
+            if (_landscapeNoteFieldDrawable != null)
+            {
+                _landscapeNoteFieldDrawable.IsLandscapeMode = true;
+            }
+
+            // Set the center area to quarter width of screen in landscape mode
+            LandscapeCenterGrid.WidthRequest = Width * 0.25; // 25% of screen width
+
             // Sync background
             LandscapeBackgroundPreview.Source = BackgroundPreview.Source;
+        }
+        else
+        {
+            // Portrait mode
+            _noteFieldDrawable.IsLandscapeMode = false;
+            if (_landscapeNoteFieldDrawable != null)
+            {
+                _landscapeNoteFieldDrawable.IsLandscapeMode = false;
+            }
         }
 
         // Refocus after layout changes
@@ -552,21 +568,11 @@ public partial class GamePage : ContentPage
 
     private void RefreshHud()
     {
-        var scoreText = _engine.Score.ToString("D7");
-        var gradeText = _engine.Grade;
-        var plateText = _engine.Plate; // Add plate text
-        var accuracyText = $"{_engine.AccuracyPercent:0.00}%";
         var judgmentText = _engine.LastJudgmentText;
         var countsText = $"PERFECT {_engine.Counts[HitJudgment.Perfect]} • GREAT {_engine.Counts[HitJudgment.Great]} • GOOD {_engine.Counts[HitJudgment.Good]} • BAD {_engine.Counts[HitJudgment.Bad]} • MISS {_engine.Counts[HitJudgment.Miss]}";
 
         // Update only portrait counts label (no header in portrait mode)
         PortraitCountsLabel.Text = countsText;
-
-        // Update landscape HUD
-        LandscapeScoreLabel.Text = scoreText;
-        LandscapeGradeLabel.Text = gradeText;
-        LandscapeGradeLabel.TextColor = PhoenixScoring.GetGradeColor(gradeText); // Add grade coloring
-        LandscapeAccuracyLabel.Text = accuracyText;
         LandscapeCountsLabel.Text = countsText;
 
         // Hide startup messages like "GO" and "READY" from the center overlay
@@ -622,13 +628,6 @@ public partial class GamePage : ContentPage
 
             LandscapeCenterComboTextLabel.Text = "COMBO";
             LandscapeCenterComboTextLabel.TextColor = Colors.White; // White color
-        }
-
-        if (_engine.Chart is not null)
-        {
-            var metaText = $"{_engine.Chart.Difficulty} {_engine.Chart.Meter} • {_engine.Chart.Notes.Count} notes • Max combo {_engine.MaxCombo}";
-            // Only update landscape meta label (no title/meta in portrait)
-            LandscapeMetaLabel.Text = metaText;
         }
     }
 
