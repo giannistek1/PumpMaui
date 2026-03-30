@@ -23,6 +23,7 @@ public partial class GamePage : ContentPage
     private NoteFieldDrawable? _landscapeNoteFieldDrawable; // Add this line
     private readonly Stopwatch _playbackTimer = new();
     private double _playbackStartOffsetSeconds;
+    private double _notesDisplayOffsetSeconds = 0.4; // positive = delay notes by this many seconds (tweakable)
     private SscSong? _song;
     private SscChart? _chart;
     private bool _isGameLoaded;
@@ -254,9 +255,13 @@ public partial class GamePage : ContentPage
     {
         _engine.Start();
         PlaySongAudio();
+
         _playbackStartOffsetSeconds = Math.Min(0d,
             (_engine.Chart?.Notes.FirstOrDefault()?.TimeSeconds ?? 0d) - 1.2d);
-        _engine.Update(_playbackStartOffsetSeconds);
+
+        // Apply display offset so initial engine time is delayed by _notesDisplayOffsetSeconds
+        _engine.Update(_playbackStartOffsetSeconds - _notesDisplayOffsetSeconds);
+
         _playbackTimer.Restart();
         RefreshHud();
     }
@@ -277,13 +282,17 @@ public partial class GamePage : ContentPage
             ? _playbackTimer.Elapsed.TotalSeconds + _playbackStartOffsetSeconds
             : _engine.CurrentTimeSeconds;
 
+        // Apply notes display offset so engine sees slightly earlier time (delays visual notes)
+        var engineTime = elapsedSeconds - _notesDisplayOffsetSeconds;
+        if (engineTime < 0d) engineTime = 0d;
+
         // Store previous state to detect changes
         var previousScore = _engine.Score;
         var previousCombo = _engine.Combo;
         var previousJudgment = _engine.LastJudgmentText;
         var previousTimeSeconds = _engine.CurrentTimeSeconds;
 
-        _engine.Update(elapsedSeconds);
+        _engine.Update(engineTime);
 
         // Check if anything significant changed that requires HUD update
         var hudChanged = previousScore != _engine.Score ||

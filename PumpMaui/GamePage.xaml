@@ -21,7 +21,7 @@
 
             <!-- Fixed width note field centered -->
             <GraphicsView x:Name="NoteFieldView"
-                          WidthRequest="300"
+                          WidthRequest="210" 
                           HorizontalOptions="Center"
                           VerticalOptions="FillAndExpand" />
 
@@ -54,7 +54,7 @@
                 <!-- Judgment Text -->
                 <Label x:Name="CenterJudgmentLabel"
                        Text="READY"
-                       FontSize="{OnPlatform Default=48, iOS=40, Android=40}"
+                       FontSize="{OnPlatform Default=40, iOS=32, Android=32}"
                        FontAttributes="Bold"
                        TextColor="#FFE76A"
                        HorizontalTextAlignment="Center"
@@ -152,7 +152,8 @@
                 
                 <!-- Note field with quarter width -->
                 <GraphicsView x:Name="LandscapeNoteFieldView"
-                              HorizontalOptions="FillAndExpand"
+                              WidthRequest="210"
+                              HorizontalOptions="Center"
                               VerticalOptions="FillAndExpand" />
 
                 <!-- Center Overlay for Landscape - Judgment and Combo -->
@@ -165,7 +166,7 @@
                     <!-- Judgment Text -->
                     <Label x:Name="LandscapeCenterJudgmentLabel"
                            Text="READY"
-                           FontSize="32"
+                           FontSize="26"
                            FontAttributes="Bold"
                            TextColor="#FFE76A"
                            HorizontalTextAlignment="Center"

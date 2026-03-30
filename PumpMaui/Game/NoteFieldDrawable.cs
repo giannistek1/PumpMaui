@@ -20,6 +20,12 @@ public sealed class NoteFieldDrawable : IDrawable
     private static IImage? _centerNxa, _downleftNxa, _upleftNxa;
     private static IImage? _centerOld, _downleftOld, _upleftOld;
 
+    // Grayscale receptor images (center + others) for skins
+    private static IImage? _grayPrime, _graycPrime;
+    private static IImage? _grayFiestaEx, _graycFiestaEx;
+    private static IImage? _grayNxa, _graycNxa;
+    private static IImage? _grayOld, _graycOld;
+
     // Fixed race condition: use Task to ensure proper initialization
     private static Task? _loadingTask;
     private static bool _imagesLoaded = false;
@@ -71,10 +77,24 @@ public sealed class NoteFieldDrawable : IDrawable
             _downleftOld = await LoadMauiAsset("downleft_old.png");
             _upleftOld = await LoadMauiAsset("upleft_old.png");
 
+            // Load grayscale receptor images (prime + variants)
+            _grayPrime = await LoadMauiAsset("gray_prime.png");
+            _graycPrime = await LoadMauiAsset("grayc_prime.png");
+
+            _grayFiestaEx = await LoadMauiAsset("gray_fiestaex.png");
+            _graycFiestaEx = await LoadMauiAsset("grayc_fiestaex.png");
+
+            _grayNxa = await LoadMauiAsset("gray_nxa.png");
+            _graycNxa = await LoadMauiAsset("grayc_nxa.png");
+
+            _grayOld = await LoadMauiAsset("gray_old.png");
+            _graycOld = await LoadMauiAsset("grayc_old.png");
+
             System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Prime: Center={_centerPrime != null}, Blue={_downleftPrime != null}, Red={_upleftPrime != null}");
             System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Fiestaex: Center={_centerFiestaEx != null}, Blue={_downleftFiestaEx != null}, Red={_upleftFiestaEx != null}");
             System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - NXA: Center={_centerNxa != null}, Blue={_downleftNxa != null}, Red={_upleftNxa != null}");
             System.Diagnostics.Debug.WriteLine($"🖼️ Image loading summary - Old: Center={_centerOld != null}, Blue={_downleftOld != null}, Red={_upleftOld != null}");
+            System.Diagnostics.Debug.WriteLine($"🖼️ Gray images - prime={_grayPrime != null}, grayc={_graycPrime != null}, fiestaex={_grayFiestaEx != null}, grayc_fiestaex={_graycFiestaEx != null}");
 
             _imagesLoaded = true;
         }
@@ -116,6 +136,29 @@ public sealed class NoteFieldDrawable : IDrawable
             "old" => _upleftOld,
             "nxa" => _upleftNxa,
             _ => _upleftPrime // Default to Prime
+        };
+    }
+
+    // New helpers for grayscale receptor images
+    private IImage? GetGrayImage()
+    {
+        return NoteSkin.ToLower() switch
+        {
+            "fiestaex" => _grayFiestaEx,
+            "old" => _grayOld,
+            "nxa" => _grayNxa,
+            _ => _grayPrime
+        };
+    }
+
+    private IImage? GetGrayCenterImage()
+    {
+        return NoteSkin.ToLower() switch
+        {
+            "fiestaex" => _graycFiestaEx,
+            "old" => _graycOld,
+            "nxa" => _graycNxa,
+            _ => _graycPrime
         };
     }
 
@@ -197,7 +240,7 @@ public sealed class NoteFieldDrawable : IDrawable
                         var allResourceNames = assembly.GetManifestResourceNames();
                         foreach (var name in allResourceNames)
                         {
-                            if (name.Contains("Image") || name.Contains(".png") || name.Contains(".jpg") || name.Contains("yellow") || name.Contains("blue") || name.Contains("red"))
+                            if (name.Contains("Image") || name.Contains(".png") || name.Contains(".jpg") || name.Contains("gray") || name.Contains("yellow") || name.Contains("blue") || name.Contains("red"))
                             {
                                 System.Diagnostics.Debug.WriteLine($"    - {name}");
                             }
@@ -248,39 +291,6 @@ public sealed class NoteFieldDrawable : IDrawable
         {
             System.Diagnostics.Debug.WriteLine($"❌ Failed to load image {filename}: {ex.Message}");
             return null;
-        }
-    }
-
-    private static async Task ListAvailableFiles()
-    {
-        try
-        {
-            System.Diagnostics.Debug.WriteLine("📁 Listing available files in app package:");
-
-            // Try to list files that might be our images
-            var commonImageNames = new[]
-            {
-                "yellow_center.png", "yellow-center.png", "yellow_center.scale-100.png", "yellow-center.scale-100.png",
-                "blue_arrow_dl.png", "blue-arrow-dl.png", "blue_arrow_dl.scale-100.png", "blue-arrow-dl.scale-100.png",
-                "red_arrow_tl.png", "red-arrow-tl.png", "red_arrow_tl.scale-100.png", "red-arrow-tl.scale-100.png"
-            };
-
-            foreach (var imageName in commonImageNames)
-            {
-                try
-                {
-                    using var stream = await FileSystem.OpenAppPackageFileAsync(imageName);
-                    System.Diagnostics.Debug.WriteLine($"  ✅ Found: {imageName} ({stream.Length} bytes)");
-                }
-                catch
-                {
-                    System.Diagnostics.Debug.WriteLine($"  ❌ Not found: {imageName}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"❌ Failed to list files: {ex.Message}");
         }
     }
 
@@ -342,8 +352,8 @@ public sealed class NoteFieldDrawable : IDrawable
         var bottomMargin = IsLandscapeMode ? 12f : 26f; // Slightly more bottom margin for landscape
         var receptorY = IsLandscapeMode ? 50f : 92f; // Move receptor down more for better travel distance
 
-        // Ultra-tight lane spacing - minimal gaps for maximum closeness
-        var laneGap = IsLandscapeMode ? 0.3f : 0.5f;
+        // FORCE zero gap for both landscape and portrait so lanes touch (0 px)
+        var laneGap = 0f;
 
         // Balanced lane widths - smaller for better pattern recognition
         float[] laneWidths = IsLandscapeMode ?
@@ -351,7 +361,7 @@ public sealed class NoteFieldDrawable : IDrawable
             new[] { 1f, 1f, 1f, 1f, 1f };
 
         float total = laneWidths.Sum();
-        // Reduced multiplier for tighter spacing calculation
+        // With laneGap == 0 this becomes dirtyRect.Width / total
         float unit = (dirtyRect.Width - laneGap * 4f) / total;
         float[] actualWidths = laneWidths.Select(w => w * unit).ToArray();
 
@@ -367,25 +377,26 @@ public sealed class NoteFieldDrawable : IDrawable
 
     private void DrawLaneBackgrounds(ICanvas canvas, RectF dirtyRect, float[] actualWidths, float laneGap, float receptorY, float fieldBottom)
     {
+        // Draw neutral lane backgrounds without lane-specific colors or borders
         float x = laneGap;
         for (var lane = 0; lane < 5; lane++)
         {
             float width = actualWidths[lane];
-            canvas.FillColor = Color.FromArgb(lane % 2 == 0 ? "#17102A" : "#120B22");
+
+            // Neutral base for lane background (very dark)
+            canvas.FillColor = Color.FromArgb("#0B0710");
             canvas.FillRoundedRectangle(x, 18f, width, fieldBottom - 6f, 18f);
 
-            canvas.StrokeColor = LaneColors[lane].WithAlpha(0.50f);
-            canvas.StrokeSize = 2f;
-            canvas.DrawRoundedRectangle(x, receptorY - 16f, width, fieldBottom - receptorY + 18f, 18f);
-
-            canvas.FillColor = LaneColors[lane].WithAlpha(0.08f);
+            // Subtle neutral overlay for the active travel area (low alpha)
+            canvas.FillColor = Color.FromArgb("#0B0710").WithAlpha(0.04f);
             canvas.FillRoundedRectangle(x, receptorY - 16f, width, fieldBottom - receptorY + 18f, 18f);
 
             x += width + laneGap;
         }
 
-        canvas.StrokeColor = Colors.White.WithAlpha(0.12f);
-        canvas.StrokeSize = 2f;
+        // Subtle separator line across field (kept neutral and very faint)
+        canvas.StrokeColor = Colors.White.WithAlpha(0.06f);
+        canvas.StrokeSize = 1f;
         canvas.DrawLine(0f, receptorY + 22f, dirtyRect.Width, receptorY + 22f);
     }
 
@@ -523,12 +534,10 @@ public sealed class NoteFieldDrawable : IDrawable
             float receptorSize;
             if (IsLandscapeMode)
             {
-                // Landscape: smaller receptors to match smaller notes
                 receptorSize = MathF.Min(width * 0.75f, 38f);
             }
             else
             {
-                // Portrait: 80% width with max 44f  
                 receptorSize = MathF.Min(width * 0.80f, 44f);
             }
 
@@ -539,19 +548,41 @@ public sealed class NoteFieldDrawable : IDrawable
             if (isHoldActive)
             {
                 var glowSize = receptorSize * 1.3f;
-                canvas.FillColor = LaneColors[lane].WithAlpha(0.3f);
+                canvas.FillColor = Colors.White.WithAlpha(0.06f);
+                if (lane == 2)
+                    canvas.FillRoundedRectangle(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize, 8f);
+                else
+                    canvas.FillEllipse(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize);
+            }
+
+            // Draw receptor using grayscale images / fallbacks
+            DrawReceptorShape(canvas, lane, receptorSize, glow, isHoldActive);
+
+            // Smaller yellow press glow: use reduced scale and size
+            if (glow > 0f)
+            {
+                // Reduced pulse amplitude and alpha scale for a more subtle halo
+                var pulse = 0.9f + 0.05f * MathF.Sin((float)_engine.CurrentTimeSeconds * 18f);
+                var yellowAlpha = Math.Clamp(glow * 0.5f * pulse, 0f, 1f);
+
+                canvas.SaveState();
+                canvas.FillColor = Color.FromArgb("#FFE45E").WithAlpha(yellowAlpha);
+
                 if (lane == 2)
                 {
-                    canvas.FillRoundedRectangle(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize, 8f);
+                    // Smaller rounded overlay for center receptor
+                    var haloSize = receptorSize * 1.2f;
+                    canvas.FillRoundedRectangle(-haloSize / 2f, -haloSize / 2f, haloSize, haloSize, 8f);
                 }
                 else
                 {
-                    canvas.FillEllipse(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize);
+                    // Smaller circular halo for arrow receptors
+                    var haloSize = receptorSize * 1.3f;
+                    canvas.FillEllipse(-haloSize / 2f, -haloSize / 2f, haloSize, haloSize);
                 }
-            }
 
-            // Draw receptor using images if available, otherwise fallback to shapes
-            DrawReceptorShape(canvas, lane, receptorSize, glow, isHoldActive);
+                canvas.RestoreState();
+            }
 
             canvas.RestoreState();
             x += width + laneGap;
@@ -560,17 +591,41 @@ public sealed class NoteFieldDrawable : IDrawable
 
     private void DrawReceptorShape(ICanvas canvas, int lane, float size, float glow, bool isHoldActive)
     {
+        // Receptors should use grayscale assets per user request:
+        // lane 0 (leftmost)  -> gray_prime rotated -90
+        // lane 1            -> gray_prime rotated 0
+        // lane 2 (center)   -> grayc_prime (or skin variant)
+        // lane 3            -> gray_prime rotated 90
+        // lane 4 (rightmost)-> gray_prime rotated 180
+
         if (lane == 2)
         {
-            // Center: use appropriate center image based on skin
+            // center receptor uses grayc_* asset if available
+            var grayCenter = GetGrayCenterImage();
+            if (grayCenter != null)
+            {
+                canvas.Alpha = 0.90f + glow * 0.10f;
+                canvas.DrawImage(grayCenter, -size / 2f, -size / 2f, size, size);
+                canvas.Alpha = 1f;
+
+                if (ShowNoteBorders)
+                {
+                    canvas.StrokeColor = Colors.White.WithAlpha(0.55f + glow * 0.25f);
+                    canvas.StrokeSize = isHoldActive ? 4f : 3f;
+                    canvas.DrawRectangle(-size / 2f, -size / 2f, size, size);
+                }
+
+                return;
+            }
+
+            // Fallback to previous color center image if gray center not available
             var centerImage = GetCenterImage();
             if (centerImage != null)
             {
                 canvas.Alpha = 0.20f + glow * 0.40f;
                 canvas.DrawImage(centerImage, -size / 2f, -size / 2f, size, size);
-                canvas.Alpha = 1f; // Reset alpha
+                canvas.Alpha = 1f;
 
-                // Add border only if debug flag is enabled
                 if (ShowNoteBorders)
                 {
                     canvas.StrokeColor = LaneColors[lane].WithAlpha(0.70f + glow * 0.25f);
@@ -580,65 +635,102 @@ public sealed class NoteFieldDrawable : IDrawable
             }
             else
             {
-                // Fallback to square
-                canvas.FillColor = LaneColors[lane].WithAlpha(0.20f + glow * 0.40f);
+                // Fallback to drawn square
+                canvas.FillColor = Colors.White.WithAlpha(0.18f + glow * 0.4f);
                 canvas.FillRectangle(-size / 2f, -size / 2f, size, size);
-
                 if (ShowNoteBorders)
                 {
-                    canvas.StrokeColor = LaneColors[lane].WithAlpha(0.70f + glow * 0.25f);
-                    canvas.StrokeSize = isHoldActive ? 4f : 3f;
+                    canvas.StrokeColor = Colors.White.WithAlpha(0.7f);
+                    canvas.StrokeSize = 2f;
                     canvas.DrawRectangle(-size / 2f, -size / 2f, size, size);
                 }
             }
         }
         else
         {
-            // Draw arrows using images with rotations
-            DrawArrowReceptor(canvas, lane, size, glow, isHoldActive);
+            // Non-center receptors: use gray image rotated per lane mapping
+            DrawGrayReceptor(canvas, lane, size, glow, isHoldActive);
         }
     }
 
-    private void DrawArrowReceptor(ICanvas canvas, int lane, float size, float glow, bool isHoldActive)
+    private void DrawGrayReceptor(ICanvas canvas, int lane, float size, float glow, bool isHoldActive)
     {
+        var gray = GetGrayImage();
+
+        // rotation mapping:
+        // lane 0 -> -90
+        // lane 1 -> 0
+        // lane 3 -> 90
+        // lane 4 -> 180
+        float rotation = lane switch
+        {
+            0 => -90f,
+            1 => 0f,
+            3 => 90f,
+            4 => 180f,
+            _ => 0f
+        };
+
+        if (gray != null)
+        {
+            canvas.SaveState();
+
+            if (rotation != 0f)
+            {
+                canvas.Rotate(rotation);
+            }
+
+            // Use normal (full) alpha for non-center grayscale receptors per request
+            canvas.Alpha = 1f;
+            canvas.DrawImage(gray, -size / 2f, -size / 2f, size, size);
+            canvas.Alpha = 1f;
+
+            canvas.RestoreState();
+
+            if (ShowNoteBorders)
+            {
+                canvas.StrokeColor = Colors.White.WithAlpha(0.70f + glow * 0.25f);
+                canvas.StrokeSize = isHoldActive ? 4f : 3f;
+                canvas.DrawEllipse(-size / 2f, -size / 2f, size, size);
+            }
+
+            return;
+        }
+
+        // If no gray image found, fallback to colored receptor rendering
+        // using previous logic (images or drawn shapes)
         IImage? image = null;
-        float rotation = 0f;
+        float fallbackRotation = 0f;
 
         switch (lane)
         {
-            case 0: // Bottom-left: blue arrow (no rotation)
+            case 0:
                 image = GetBlueArrowImage();
+                fallbackRotation = -90f;
                 break;
-            case 1: // Top-left: red arrow (no rotation)
+            case 1:
                 image = GetRedArrowImage();
+                fallbackRotation = 0f;
                 break;
-            case 3: // Top-right: red arrow rotated 90° clockwise
+            case 3:
                 image = GetRedArrowImage();
-                rotation = 90f;
+                fallbackRotation = 90f;
                 break;
-            case 4: // Bottom-right: blue arrow rotated -90°/270° clockwise
+            case 4:
                 image = GetBlueArrowImage();
-                rotation = -90f;
+                fallbackRotation = 180f;
                 break;
         }
 
         if (image != null)
         {
             canvas.SaveState();
-
-            // Apply rotation if needed
-            if (rotation != 0f)
-            {
-                canvas.Rotate(rotation);
-            }
-
+            if (fallbackRotation != 0f) canvas.Rotate(fallbackRotation);
             canvas.Alpha = 0.20f + glow * 0.40f;
             canvas.DrawImage(image, -size / 2f, -size / 2f, size, size);
-            canvas.Alpha = 1f; // Reset alpha
-
+            canvas.Alpha = 1f;
             canvas.RestoreState();
 
-            // Add border only if debug flag is enabled
             if (ShowNoteBorders)
             {
                 canvas.StrokeColor = Colors.White.WithAlpha(0.70f + glow * 0.25f);
@@ -648,7 +740,7 @@ public sealed class NoteFieldDrawable : IDrawable
         }
         else
         {
-            // Fallback to drawn arrows
+            // final fallback: drawn diagonal arrow (colored)
             canvas.FillColor = LaneColors[lane].WithAlpha(0.20f + glow * 0.40f);
 
             if (ShowNoteBorders)
