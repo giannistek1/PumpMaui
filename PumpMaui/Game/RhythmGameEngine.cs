@@ -8,7 +8,12 @@ public sealed class RhythmGameEngine
 
     private readonly double[] _laneFlashTimes = [-10d, -10d, -10d, -10d, -10d];
     private readonly bool[] _laneHoldActive = [false, false, false, false, false];
+    private readonly bool[] _lanePressed = [false, false, false, false, false]; // Tracks physical button press state
     private List<PlayableNote> _notes = [];
+
+    // How far before a hold start we'll accept a pre-press as starting the hold (seconds).
+    // Player holding this button up to this many seconds before the hold start will be credited.
+    private const double PreHoldAcceptanceSeconds = 0.01d;
 
     public SscSong? Song { get; private set; }
     public SscChart? Chart { get; private set; }
@@ -90,6 +95,7 @@ public sealed class RhythmGameEngine
         for (var i = 0; i < _laneHoldActive.Length; i++)
         {
             _laneHoldActive[i] = false;
+            _lanePressed[i] = false;
         }
     }
 
@@ -105,6 +111,28 @@ public sealed class RhythmGameEngine
         foreach (var note in _notes.Where(note => !note.Consumed && !note.Missed))
         {
             var delta = elapsedSeconds - note.TimeSeconds;
+
+            // NEW: If this is a hold start and the player is already physically holding the lane
+            // within the pre-acceptance window, start the hold and give PERFECT.
+            if (note.Type == NoteType.HoldStart && !_laneHoldActive[note.Lane] && _lanePressed[note.Lane])
+            {
+                if (delta >= -PreHoldAcceptanceSeconds && delta <= PhoenixScoring.BadWindowSeconds)
+                {
+                    note.Consumed = true;
+                    note.IsHoldActive = true;
+                    _laneHoldActive[note.Lane] = true;
+
+                    // Mark the partner as hold active so drop-check logic works
+                    if (note.HoldPartner != null)
+                    {
+                        note.HoldPartner.IsHoldActive = true;
+                    }
+
+                    // Starting hold via pre-press counts as PERFECT
+                    RegisterJudgment(HitJudgment.Perfect);
+                    continue;
+                }
+            }
 
             if (delta > PhoenixScoring.BadWindowSeconds)
             {
@@ -196,6 +224,8 @@ public sealed class RhythmGameEngine
     public void HandleLaneHit(int lane)
     {
         _laneFlashTimes[lane] = CurrentTimeSeconds;
+        _lanePressed[lane] = true; // track the physical press immediately
+
         if (!IsPlaying || Chart is null)
         {
             return;
@@ -246,6 +276,9 @@ public sealed class RhythmGameEngine
 
     public void HandleLaneRelease(int lane)
     {
+        // Track physical release
+        _lanePressed[lane] = false;
+
         // With the new system, releases don't immediately end holds
         // Holds automatically end when the tail note reaches the receptor
         // We still track releases for potential hold drops, but don't immediately end the hold
@@ -306,6 +339,7 @@ public sealed class RhythmGameEngine
         {
             _laneFlashTimes[lane] = -10d;
             _laneHoldActive[lane] = false;
+            _lanePressed[lane] = false;
         }
 
         CurrentTimeSeconds = 0d;
