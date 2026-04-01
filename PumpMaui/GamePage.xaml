@@ -7,6 +7,7 @@
              NavigationPage.HasNavigationBar="False">
 
     <Grid x:Name="MainGrid">
+        
         <!-- Portrait Layout -->
         <Grid x:Name="PortraitLayout" 
               IsVisible="True"
@@ -135,7 +136,8 @@
                 <!-- Left input pad - Scales with available space -->
                 <Grid x:Name="LandscapeLeftPad" 
                       HorizontalOptions="Fill"
-                      VerticalOptions="Fill" />
+                      VerticalOptions="Fill"
+                      Margin="0,8,0,0"/>
             </Grid>
 
             <!-- Center - Quarter width note field -->
@@ -208,7 +210,8 @@
                 <!-- Right input pad - Scales with available space -->
                 <Grid x:Name="LandscapeRightPad" 
                       HorizontalOptions="Fill"
-                      VerticalOptions="Fill" />
+                      VerticalOptions="Fill"
+                      Margin="0,30,0,0"/>
             </Grid>
 
             <!-- Bottom stats across full width -->
@@ -218,6 +221,7 @@
                     StrokeThickness="1"
                     Padding="6"
                     Margin="4,8,4,0">
+                
                 <Label x:Name="LandscapeCountsLabel"
                        Text="PERFECT 0 • GREAT 0 • GOOD 0 • BAD 0 • MISS 0"
                        FontSize="10"

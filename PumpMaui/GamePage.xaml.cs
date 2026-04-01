@@ -760,16 +760,16 @@ public partial class GamePage : ContentPage
         if (isLandscapePad)
         {
             // For landscape buttons, create compact square buttons with fixed sizes
-            var buttonSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 50 : 65;
+            var buttonSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 70 : 70;
 
             var button = new Button
             {
                 Text = string.Empty, // No text for landscape buttons
                 FontAttributes = FontAttributes.Bold,
-                BackgroundColor = LaneColors[lane].WithAlpha(0.92f),
+                BackgroundColor = LaneColors[lane].WithAlpha(0.4f),
                 TextColor = Colors.Black,
                 CornerRadius = 8,
-                Margin = new Thickness(2), // Minimal margin for tight spacing
+                Margin = new Thickness(0), // Minimal margin for tight spacing
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
                 WidthRequest = buttonSize,
@@ -777,7 +777,7 @@ public partial class GamePage : ContentPage
                 Shadow = new Shadow
                 {
                     Brush = new SolidColorBrush(LaneColors[lane]),
-                    Opacity = 0.65f,
+                    Opacity = 0.3f,
                     Offset = new Point(0, 2),
                     Radius = 12
                 }
@@ -808,7 +808,7 @@ public partial class GamePage : ContentPage
             BackgroundColor = LaneColors[lane].WithAlpha(0.4f), // Transparent for portrait
             TextColor = Colors.White,
             CornerRadius = 8,
-            Margin = new Thickness(4), // Keep original portrait margin
+            Margin = new Thickness(0), // Keep original portrait margin
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
             WidthRequest = baseSize,
