@@ -351,19 +351,15 @@ public partial class GamePage : ContentPage
 
     private async void PlaySongAudio()
     {
-        // Properly reset MediaElement state to fix replay issues
         SongMediaElement.Stop();
         SongMediaElement.Source = null;
-
-        // Add a small delay to ensure MediaElement is fully reset
         await Task.Delay(50);
 
+        // --- Cached remote audio (CDN) ---
         if (!string.IsNullOrEmpty(_audioTempFile) && File.Exists(_audioTempFile))
         {
             System.Diagnostics.Debug.WriteLine($"🎵 Using cached remote audio: {_audioTempFile}");
-
-            var fileUri = new Uri(_audioTempFile).AbsoluteUri;
-            SongMediaElement.Source = MediaSource.FromUri(fileUri);
+            SongMediaElement.Source = MediaSource.FromUri(new Uri(_audioTempFile).AbsoluteUri);
             SongMediaElement.Play();
             return;
         }
@@ -372,82 +368,149 @@ public partial class GamePage : ContentPage
 
         try
         {
-            // Check if this is an embedded song (starts with Songs/)
+            // --- Embedded bundle assets (starts with "Songs/") ---
             if (!string.IsNullOrWhiteSpace(_song.SourcePath) && _song.SourcePath.StartsWith("Songs/"))
             {
-                // For embedded MAUI assets, we need to copy the file to a temporary location first
                 var baseDir = Path.GetDirectoryName(_song.SourcePath);
                 if (baseDir is not null)
                 {
                     var embeddedAudioPath = Path.Combine(baseDir, _song.MusicPath.Replace('/', Path.DirectorySeparatorChar))
-                        .Replace('\\', '/'); // Normalize to forward slashes
+                        .Replace('\\', '/');
 
-                    System.Diagnostics.Debug.WriteLine($"🎵 Trying to load embedded audio: {embeddedAudioPath}");
-
+                    System.Diagnostics.Debug.WriteLine($"🎵 Trying embedded audio: {embeddedAudioPath}");
                     try
                     {
-                        // Copy embedded asset to temporary file
                         await using var sourceStream = await FileSystem.OpenAppPackageFileAsync(embeddedAudioPath);
-
-                        // Create a more reliable temporary directory
                         var tempDir = GetReliableTempDirectory();
+                        var tempFile = Path.Combine(tempDir,
+                            $"{Path.GetFileNameWithoutExtension(_song.MusicPath)}_{DateTime.Now.Ticks}{Path.GetExtension(_song.MusicPath)}");
 
-                        // Create unique filename each time to avoid MediaElement caching issues
-                        var uniqueFileName = $"{Path.GetFileNameWithoutExtension(_song.MusicPath)}_{DateTime.Now.Ticks}{Path.GetExtension(_song.MusicPath)}";
-                        var tempFile = Path.Combine(tempDir, uniqueFileName);
-
-                        System.Diagnostics.Debug.WriteLine($"📁 Temp directory: {tempDir}");
-                        System.Diagnostics.Debug.WriteLine($"📁 Target temp file: {tempFile}");
-
-                        // Always copy to a new temp file to ensure MediaElement loads properly
-                        System.Diagnostics.Debug.WriteLine($"📁 Copying audio to temp file: {tempFile}");
                         await using var targetStream = File.Create(tempFile);
                         await sourceStream.CopyToAsync(targetStream);
-                        System.Diagnostics.Debug.WriteLine($"✅ Successfully copied {sourceStream.Length} bytes");
 
-                        // Verify the file exists and has content
-                        if (File.Exists(tempFile))
+                        if (File.Exists(tempFile) && new FileInfo(tempFile).Length > 0)
                         {
-                            var fileInfo = new FileInfo(tempFile);
-                            System.Diagnostics.Debug.WriteLine($"📁 Temp file size: {fileInfo.Length} bytes");
-
-                            if (fileInfo.Length > 0)
-                            {
-                                // Load from temporary file with proper URI encoding for paths with spaces
-                                System.Diagnostics.Debug.WriteLine($"🎵 Loading audio from temp file: {tempFile}");
-
-                                // Use proper file URI encoding to handle spaces and special characters
-                                var fileUri = new Uri(tempFile).AbsoluteUri;
-                                System.Diagnostics.Debug.WriteLine($"🎵 File URI: {fileUri}");
-
-                                SongMediaElement.Source = MediaSource.FromUri(fileUri);
-                                SongMediaElement.Play();
-                                return;
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine($"❌ Temp file is empty: {tempFile}");
-                            }
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"❌ Temp file was not created: {tempFile}");
+                            System.Diagnostics.Debug.WriteLine($"🎵 Playing embedded audio from: {tempFile}");
+                            SongMediaElement.Source = MediaSource.FromUri(new Uri(tempFile).AbsoluteUri);
+                            SongMediaElement.Play();
+                            return;
                         }
                     }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"❌ Failed to copy embedded audio: {ex.Message}");
-                        System.Diagnostics.Debug.WriteLine($"   Stack trace: {ex.StackTrace}");
                     }
 
-                    // Fallback: try direct URI approaches
-                    System.Diagnostics.Debug.WriteLine("🔄 Falling back to direct URI loading...");
                     await TryAlternativeAudioLoading(embeddedAudioPath);
                     return;
                 }
             }
 
-            // Handle external files (from file picker)
+#if ANDROID
+            // --- Android SAF external folder ---
+            // Direct file paths are blocked by scoped storage on Android 10+.
+            // If the song was loaded via SAF (SongDocumentUri is set), find the audio
+            // file inside that document tree using ContentResolver.
+            if (!string.IsNullOrWhiteSpace(_song.SongDocumentUri))
+            {
+                System.Diagnostics.Debug.WriteLine($"🎵 Android SAF path — scanning song folder for audio");
+                try
+                {
+                    var context = Android.App.Application.Context;
+                    var treeUri = Android.Net.Uri.Parse(_song.SongDocumentUri);
+                    if (treeUri != null)
+                    {
+                        // List children of the song folder document
+                        var songDocId = Android.Provider.DocumentsContract.GetDocumentId(treeUri)
+                                        ?? Android.Provider.DocumentsContract.GetTreeDocumentId(treeUri);
+
+                        if (songDocId != null)
+                        {
+                            var childrenUri = Android.Provider.DocumentsContract
+                                .BuildChildDocumentsUriUsingTree(treeUri, songDocId);
+
+                            var audioExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                                { ".mp3", ".ogg", ".wav", ".flac", ".m4a" };
+
+                            Android.Database.ICursor? cursor = null;
+                            string? audioDocId = null;
+                            string? audioFileName = null;
+                            try
+                            {
+                                cursor = context.ContentResolver!.Query(
+                                    childrenUri!,
+                                    [
+                                        Android.Provider.DocumentsContract.Document.ColumnDocumentId,
+                                        Android.Provider.DocumentsContract.Document.ColumnDisplayName,
+                                    ],
+                                    null, null, null);
+
+                                while (cursor?.MoveToNext() == true)
+                                {
+                                    var docId = cursor.GetString(0);
+                                    var name = cursor.GetString(1);
+                                    if (docId != null && name != null &&
+                                        audioExtensions.Contains(Path.GetExtension(name)))
+                                    {
+                                        // Prefer the file matching _song.MusicPath exactly, fall back to first audio
+                                        if (audioDocId == null ||
+                                            name.Equals(Path.GetFileName(_song.MusicPath), StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            audioDocId = docId;
+                                            audioFileName = name;
+                                        }
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                cursor?.Close();
+                            }
+
+                            if (audioDocId != null)
+                            {
+                                var audioUri = Android.Provider.DocumentsContract
+                                    .BuildDocumentUriUsingTree(treeUri, audioDocId);
+
+                                System.Diagnostics.Debug.WriteLine($"🎵 Found SAF audio: {audioFileName} ({audioDocId})");
+
+                                // Copy to cache so MediaElement can play it via a file:// URI
+                                var tempDir = GetReliableTempDirectory();
+                                var tempFile = Path.Combine(tempDir,
+                                    $"{Path.GetFileNameWithoutExtension(audioFileName!)}_{DateTime.Now.Ticks}{Path.GetExtension(audioFileName)}");
+
+                                await using (var inStream = context.ContentResolver!.OpenInputStream(audioUri!))
+                                await using (var outStream = File.Create(tempFile))
+                                {
+                                    await inStream!.CopyToAsync(outStream);
+                                }
+
+                                if (File.Exists(tempFile) && new FileInfo(tempFile).Length > 0)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"🎵 Playing SAF audio from cache: {tempFile}");
+                                    SongMediaElement.Source = MediaSource.FromUri(new Uri(tempFile).AbsoluteUri);
+                                    SongMediaElement.Play();
+                                    return;
+                                }
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine($"❌ No audio file found in SAF song folder");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"❌ SAF audio loading failed: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"   {ex.StackTrace}");
+                }
+
+                return; // SAF songs don't have a fallback file path
+            }
+#endif
+
+            // --- External files loaded via file path (desktop / iOS) ---
             if (!string.IsNullOrWhiteSpace(_song.SourcePath))
             {
                 var baseDir = Path.GetDirectoryName(_song.SourcePath);
@@ -456,13 +519,8 @@ public partial class GamePage : ContentPage
                     var candidate = Path.Combine(baseDir, _song.MusicPath.Replace('/', Path.DirectorySeparatorChar));
                     if (File.Exists(candidate))
                     {
-                        System.Diagnostics.Debug.WriteLine($"🎵 Loading external audio: {candidate}");
-
-                        // Use proper file URI encoding for external files too
-                        var fileUri = new Uri(candidate).AbsoluteUri;
-                        System.Diagnostics.Debug.WriteLine($"🎵 External file URI: {fileUri}");
-
-                        SongMediaElement.Source = MediaSource.FromUri(fileUri);
+                        System.Diagnostics.Debug.WriteLine($"🎵 Playing external audio: {candidate}");
+                        SongMediaElement.Source = MediaSource.FromUri(new Uri(candidate).AbsoluteUri);
                         SongMediaElement.Play();
                         return;
                     }
@@ -474,7 +532,7 @@ public partial class GamePage : ContentPage
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"❌ Audio loading error: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"   Stack trace: {ex.StackTrace}");
+            System.Diagnostics.Debug.WriteLine($"   {ex.StackTrace}");
         }
     }
 
