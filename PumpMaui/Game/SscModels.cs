@@ -13,6 +13,11 @@ public sealed class SscSong
     public IReadOnlyList<SscChart> Charts { get; init; } = [];
     public string? SourcePath { get; init; }
     public string BaseUrl { get; set; } = string.Empty;
+    /// <summary>
+    /// On Android, the SAF document tree URI for the song's folder.
+    /// Used to open audio and image files via ContentResolver instead of File I/O.
+    /// </summary>
+    public string? SongDocumentUri { get; set; }
 }
 
 public sealed class SscChart

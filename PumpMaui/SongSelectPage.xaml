@@ -98,6 +98,7 @@
 
                     </Grid>
 
+
                     <Grid Grid.Row="1" ColumnDefinitions="Auto, Auto" ColumnSpacing="12">
                         <!-- Note Skin Selector - Portrait -->
                         <Label
@@ -362,10 +363,16 @@
         </Grid>
 
         <!-- Landscape Layout -->
-        <Grid x:Name="LandscapeLayout" IsVisible="False" Padding="16,8" RowDefinitions="Auto,Auto,Auto,*">
+        <!-- Row 0: Header
+             Row 1: Loading progress bar
+             Row 2: Settings bar (buttons, speed, skin)
+             Row 3: Selection panel — only visible when a song is selected (no overlap)
+             Row 4: Song/series list -->
+        <Grid x:Name="LandscapeLayout" IsVisible="False" Padding="16,8"
+              RowDefinitions="Auto,Auto,Auto,Auto,*">
 
             <!-- Header - Compact for landscape -->
-            <VerticalStackLayout Grid.Row="0" Spacing="1" Margin="0,0,0,8">
+            <VerticalStackLayout Grid.Row="0" Spacing="1" Margin="0,0,0,4">
                 <Label Text="PUMP MAUI"
                        FontSize="20"
                        FontAttributes="Bold"
@@ -377,178 +384,203 @@
                        HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
 
+            <!-- Loading progress -->
             <VerticalStackLayout Grid.Row="1" Spacing="4">
-
                 <Label x:Name="LoadingLabelLandscape"
-                               Text=""
-                               TextColor="#D0B7FF"
-                               FontSize="12"
-                               IsVisible="False"
-                               HorizontalTextAlignment="Center"/>
-
+                       Text=""
+                       TextColor="#D0B7FF"
+                       FontSize="12"
+                       IsVisible="False"
+                       HorizontalTextAlignment="Center"/>
                 <ProgressBar x:Name="LoadingProgressBarLandscape"
                              Progress="0"
                              IsVisible="False"
                              HeightRequest="6"
                              BackgroundColor="#2A1B4A"
                              ProgressColor="#D94BFF"/>
-
             </VerticalStackLayout>
 
-            <!-- Controls Row - Updated with chart selection and note skin -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,0,0,8">
+            <!-- Settings bar: navigation, load buttons, scroll speed, note skin -->
+            <Grid Grid.Row="2"
+                  ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"
+                  ColumnSpacing="8"
+                  Margin="0,0,0,6">
 
-                <!-- Left Controls -->
-                <HorizontalStackLayout Grid.Column="0" Spacing="12">
-                    <Button Text="← Series"
+                <!-- Back to Series -->
+                <Button Grid.Column="0"
+                        Text="← Series"
                         Clicked="OnBackToSeriesClicked"
                         IsVisible="{Binding IsSongListVisible}"
                         BackgroundColor="#5D42E6"
                         TextColor="White"
-                        WidthRequest="100"
-                        HeightRequest="35"/>
+                        CornerRadius="8"
+                        WidthRequest="90"
+                        HeightRequest="35"
+                        FontSize="12" />
 
-                    <!-- Load buttons - Compact -->
-                    <Button Text="External Folder"
-                            Clicked="OnOpenFolderClicked"
-                            BackgroundColor="#5D42E6"
-                            TextColor="White"
-                            CornerRadius="8"
-                            WidthRequest="120"
-                            HeightRequest="35"
-                            FontSize="12" />
+                <!-- External Folder -->
+                <Button Grid.Column="1"
+                        Text="📁 Folder"
+                        Clicked="OnOpenFolderClicked"
+                        BackgroundColor="#5D42E6"
+                        TextColor="White"
+                        CornerRadius="8"
+                        WidthRequest="90"
+                        HeightRequest="35"
+                        FontSize="12" />
 
-                    <Button x:Name="LoadRemoteButtonLandscape" HeightRequest="35" Text="Load from URL" Clicked="OnLoadRemoteClicked" />
+                <!-- Load from URL -->
+                <Button Grid.Column="2"
+                        x:Name="LoadRemoteButtonLandscape"
+                        Text="Load URL"
+                        Clicked="OnLoadRemoteClicked"
+                        CornerRadius="8"
+                        HeightRequest="35"
+                        FontSize="12"
+                        WidthRequest="90" />
 
-                    <!-- Scroll Speed Slider - Inline -->
-                    <Border Background="#1A102A"
-                            Stroke="#4C327C"
-                            StrokeThickness="1"
-                            Padding="8"
-                            StrokeShape="RoundRectangle 6"
-                            WidthRequest="200">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                            <Label Grid.Column="0"
-                                   Text="Speed"
-                                   FontSize="12"
-                                   FontAttributes="Bold"
-                                   TextColor="#FCE3FF"
-                                   VerticalTextAlignment="Center" />
-                            <Slider Grid.Column="1"
-                                    x:Name="LandscapeScrollSpeedSlider"
-                                    Minimum="0.5"
-                                    Maximum="4.0"
-                                    Value="{Binding ScrollSpeed}"
-                                    ValueChanged="OnScrollSpeedChanged"
-                                    ThumbColor="#D94BFF"
-                                    MinimumTrackColor="#A100FF"
-                                    MaximumTrackColor="#4C327C" />
-                            <Label Grid.Column="2"
-                                   x:Name="LandscapeScrollSpeedLabel"
-                                   Text="{Binding ScrollSpeedText}"
-                                   FontSize="12"
-                                   FontAttributes="Bold"
-                                   TextColor="#FFE76A"
-                                   VerticalTextAlignment="Center"
-                                   MinimumWidthRequest="30"
-                                   HorizontalTextAlignment="Center" />
-                        </Grid>
-                    </Border>
+                <!-- Scroll Speed (fills remaining space) -->
+                <Border Grid.Column="3"
+                        Background="#1A102A"
+                        Stroke="#4C327C"
+                        StrokeThickness="1"
+                        Padding="8,4"
+                        StrokeShape="RoundRectangle 6">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                        <Label Grid.Column="0"
+                               Text="Speed"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="#FCE3FF"
+                               VerticalTextAlignment="Center" />
+                        <Slider Grid.Column="1"
+                                x:Name="LandscapeScrollSpeedSlider"
+                                Minimum="0.5"
+                                Maximum="4.0"
+                                Value="{Binding ScrollSpeed}"
+                                ValueChanged="OnScrollSpeedChanged"
+                                ThumbColor="#D94BFF"
+                                MinimumTrackColor="#A100FF"
+                                MaximumTrackColor="#4C327C" />
+                        <Label Grid.Column="2"
+                               x:Name="LandscapeScrollSpeedLabel"
+                               Text="{Binding ScrollSpeedText}"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="#FFE76A"
+                               VerticalTextAlignment="Center"
+                               MinimumWidthRequest="30"
+                               HorizontalTextAlignment="Center" />
+                    </Grid>
+                </Border>
 
-                    <!-- Note Skin Selector - Landscape -->
-                    <Label Grid.Column="3"
-                           Text="Note Skin"
-                           FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                <!-- Note Skin label -->
+                <Label Grid.Column="4"
+                       Text="Skin"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#FCE3FF"
+                       VerticalTextAlignment="Center" />
+
+                <!-- Note Skin Picker -->
+                <Picker Grid.Column="5"
+                        x:Name="NoteSkinPickerLandscape"
+                        SelectedItem="{Binding NoteSkin}"
+                        TextColor="#FFF4FF"
+                        TitleColor="#8C76B5"
+                        FontSize="12"
+                        HeightRequest="35"
+                        WidthRequest="100">
+                    <Picker.Items>
+                        <x:String>Prime</x:String>
+                        <x:String>Fiesta2</x:String>
+                        <x:String>Old</x:String>
+                        <x:String>NXA</x:String>
+                    </Picker.Items>
+                </Picker>
+            </Grid>
+
+            <!-- Selected song panel — sits in its own row, never overlaps settings -->
+            <Border Grid.Row="3"
+                    Background="#140A29"
+                    Stroke="#3E2B72"
+                    StrokeThickness="1"
+                    Padding="8,6"
+                    Margin="0,0,0,6"
+                    StrokeShape="RoundRectangle 8"
+                    IsVisible="{Binding HasSelection}">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto"
+                      ColumnSpacing="10"
+                      VerticalOptions="Center">
+
+                    <!-- Song title + artist -->
+                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                        <Label x:Name="LandscapeSelectedTitleLabel"
+                               FontSize="13"
+                               FontAttributes="Bold"
+                               TextColor="#FFF4FF"
+                               LineBreakMode="TailTruncation"
+                               MaxLines="1" />
+                        <Label x:Name="LandscapeSelectedArtistLabel"
+                               FontSize="10"
+                               TextColor="#D0B7FF"
+                               LineBreakMode="TailTruncation"
+                               MaxLines="1" />
+                    </VerticalStackLayout>
+
+                    <!-- Chart label -->
+                    <Label Grid.Column="1"
+                           Text="Chart:"
+                           FontSize="11"
                            FontAttributes="Bold"
                            TextColor="#FCE3FF"
                            VerticalTextAlignment="Center" />
-                    <Picker Grid.Column="4"
-                            x:Name="NoteSkinPickerLandscape"
-                            SelectedItem="{Binding NoteSkin}"
+
+                    <!-- Chart picker -->
+                    <Picker Grid.Column="2"
+                            x:Name="LandscapeChartPicker"
+                            SelectedIndexChanged="OnChartChanged"
                             TextColor="#FFF4FF"
-                            TitleColor="#8C76B5"
-                            FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
-                            HeightRequest="{OnPlatform Default=40, iOS=35, Android=35}"
-                            WidthRequest="100">
-                        <Picker.Items>
-                            <x:String>Prime</x:String>
-                            <x:String>Fiesta2</x:String>
-                            <x:String>Old</x:String>
-                            <x:String>NXA</x:String>
-                        </Picker.Items>
-                    </Picker>
-                </HorizontalStackLayout>
+                            FontSize="11"
+                            WidthRequest="90"
+                            HeightRequest="35"
+                            VerticalOptions="Center" />
 
-                <!-- Right Controls - Chart Selection -->
-                <HorizontalStackLayout Grid.Column="1" 
-                                       Spacing="8" 
-                                       IsVisible="{Binding HasSelection}"
-                                       VerticalOptions="Center">
+                    <!-- Close button -->
+                    <Button Grid.Column="3"
+                            Text="✕"
+                            Clicked="OnCloseSelectionClicked"
+                            BackgroundColor="#8B0000"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            CornerRadius="8"
+                            WidthRequest="35"
+                            HeightRequest="35"
+                            VerticalOptions="Center" />
 
-                    <!-- Song Info - Compact -->
-                    <Border Background="#140A29"
-                            Stroke="#3E2B72"
-                            StrokeThickness="1"
-                            Padding="8"
-                            StrokeShape="RoundRectangle 6"
-                            MaximumWidthRequest="200">
-                        <VerticalStackLayout Spacing="2">
-                            <Label x:Name="LandscapeSelectedTitleLabel"
-                                   FontSize="12"
-                                   FontAttributes="Bold"
-                                   TextColor="#FFF4FF"
-                                   LineBreakMode="TailTruncation"
-                                   MaxLines="1" />
-                            <Label x:Name="LandscapeSelectedArtistLabel"
-                                   FontSize="10"
-                                   TextColor="#D0B7FF"
-                                   LineBreakMode="TailTruncation"
-                                   MaxLines="1" />
-                        </VerticalStackLayout>
-                    </Border>
-
-                    <!-- Chart Picker -->
-                    <Border Background="#2A1B4A"
-                            Stroke="#D94BFF"
-                            StrokeThickness="1"
-                            Padding="6"
-                            StrokeShape="RoundRectangle 6">
-                        <HorizontalStackLayout Spacing="6">
-                            <Label Text="Chart:"
-                                   FontSize="10"
-                                   FontAttributes="Bold"
-                                   TextColor="#FCE3FF"
-                                   VerticalTextAlignment="Center" />
-                            <Picker x:Name="LandscapeChartPicker"
-                                    SelectedIndexChanged="OnChartChanged"
-                                    TextColor="#FFF4FF"
-                                    FontSize="11"
-                                    WidthRequest="80"
-                                    HeightRequest="30" />
-                        </HorizontalStackLayout>
-                    </Border>
-
-                    <!-- Play Button -->
-                    <Button x:Name="LandscapePlayButton"
+                    <!-- Play button -->
+                    <Button Grid.Column="4"
+                            x:Name="LandscapePlayButton"
                             Text="PLAY"
                             Clicked="OnPlayClicked"
                             BackgroundColor="#D94BFF"
                             TextColor="White"
                             FontAttributes="Bold"
-                            FontSize="12"
-                            CornerRadius="8"
-                            WidthRequest="60"
-                            HeightRequest="35" />
-                </HorizontalStackLayout>
-            </Grid>
+                            FontSize="13"
+                            CornerRadius="10"
+                            WidthRequest="70"
+                            HeightRequest="35"
+                            VerticalOptions="Center" />
+                </Grid>
+            </Border>
 
             <!-- Game Series Selector - Landscape -->
-            <CollectionView Grid.Row="3"
+            <CollectionView Grid.Row="4"
                             x:Name="LandscapeSeriesCollectionView"
                             ItemsSource="{Binding GameSeriesList}"
                             SelectionMode="Single"
                             SelectionChanged="OnSeriesSelected"
-                            HeightRequest="120"
                             IsVisible="{Binding IsSeriesSelectionVisible}">
 
                 <CollectionView.ItemsLayout>
@@ -564,21 +596,18 @@
                                 Padding="0"
                                 WidthRequest="160"
                                 HeightRequest="100">
-
                             <Grid>
-                                <Image Source="{Binding Banner}"  Aspect="AspectFill"
+                                <Image Source="{Binding Banner}" Aspect="AspectFill"
                                        HorizontalOptions="Center"
                                        VerticalOptions="Center" />
-
                                 <BoxView BackgroundColor="#000000" Opacity="0.4"/>
-
                                 <Label Text="{Binding Name}"
-                                   TextColor="White"
-                                   FontSize="16"
-                                   FontAttributes="Bold"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center"
-                                   Margin="0,0,0,8"/>
+                                       TextColor="White"
+                                       FontSize="16"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       Margin="0,0,0,8"/>
                             </Grid>
                         </Border>
                     </DataTemplate>
@@ -586,14 +615,13 @@
             </CollectionView>
 
             <!-- Song list - Full width horizontal -->
-            <CollectionView Grid.Row="3"
+            <CollectionView Grid.Row="4"
                             x:Name="LandscapeSongListView"
                             ItemsSource="{Binding SongList}"
                             SelectionMode="Single"
                             SelectionChanged="OnSongSelected"
                             ItemsLayout="HorizontalList"
                             IsVisible="{Binding IsSongListVisible}">
-                
                 <CollectionView.EmptyView>
                     <Label Text="Loading song collection..."
                            TextColor="#8C76B5"
@@ -601,7 +629,6 @@
                            HorizontalTextAlignment="Center"
                            VerticalTextAlignment="Center" />
                 </CollectionView.EmptyView>
-                
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Border Margin="0,0,6,0"
@@ -610,9 +637,8 @@
                                 StrokeThickness="1"
                                 Background="#1A102A"
                                 StrokeShape="RoundRectangle 8"
-                                WidthRequest="240"
-                                HeightRequest="100">
-                            
+                                WidthRequest="200"
+                                HeightRequest="90">
                             <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="2">
                                 <!-- Background Image -->
                                 <Image Grid.RowSpan="4"
@@ -621,12 +647,10 @@
                                        Opacity="0.25"
                                        HorizontalOptions="FillAndExpand"
                                        VerticalOptions="FillAndExpand" />
-                                
-                                <!-- Semi-transparent overlay for better text readability -->
+                                <!-- Semi-transparent overlay -->
                                 <BoxView Grid.RowSpan="4"
                                          BackgroundColor="#1A102A"
                                          Opacity="0.6" />
-                                
                                 <Label Grid.Row="0"
                                        Text="{Binding Title}"
                                        FontAttributes="Bold"

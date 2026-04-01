@@ -1,4 +1,5 @@
-﻿using PumpMaui.Game;
+﻿using CommunityToolkit.Maui.Storage;
+using PumpMaui.Game;
 using PumpMaui.Models;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -12,20 +13,18 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     private SscSong? _selectedSong;
     private SscChart? _selectedChart;
     private double _scrollSpeed = GameConstants.DefaultScrollSpeed;
-    private List<SscChart> _currentSortedCharts = []; // Keep track of sorted charts for picker
+    private List<SscChart> _currentSortedCharts = [];
 
     public ObservableCollection<SongListItem> SongList { get; } = [];
+    public ObservableCollection<GameSeriesItem> GameSeriesList { get; } = [];
+
+    private Dictionary<string, List<SscSong>> _songsBySeries = [];
 
     private bool _hasSelection;
     public bool HasSelection
     {
         get => _hasSelection;
-        private set
-        {
-            if (_hasSelection == value) return;
-            _hasSelection = value;
-            OnPropertyChanged();
-        }
+        private set { if (_hasSelection == value) return; _hasSelection = value; OnPropertyChanged(); }
     }
 
     public double ScrollSpeed
@@ -43,21 +42,11 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     public string ScrollSpeedText => $"{_scrollSpeed:F1}x";
 
     private string _noteSkin = "Prime";
-
     public string NoteSkin
     {
         get => _noteSkin;
-        set
-        {
-            if (_noteSkin == value) return;
-            _noteSkin = value;
-            OnPropertyChanged();
-        }
+        set { if (_noteSkin == value) return; _noteSkin = value; OnPropertyChanged(); }
     }
-
-    public ObservableCollection<GameSeriesItem> GameSeriesList { get; } = new();
-
-    private Dictionary<string, List<SscSong>> _songsBySeries = new();
 
     private bool _isSeriesSelectionVisible = true;
     public bool IsSeriesSelectionVisible
@@ -78,57 +67,41 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     {
         InitializeComponent();
         BindingContext = this;
-
-        // Register the GamePage route for Shell navigation
         Routing.RegisterRoute("GamePage", typeof(GamePage));
-
-        // Handle size changes for responsive layout
         SizeChanged += OnPageSizeChanged;
     }
+
+    // -------------------------------------------------------------------------
+    // Layout / orientation
+    // -------------------------------------------------------------------------
 
     private void OnPageSizeChanged(object sender, EventArgs e)
     {
         var isLandscape = Width > Height;
-        System.Diagnostics.Debug.WriteLine($"🔄 OnPageSizeChanged: isLandscape={isLandscape}, Width={Width}, Height={Height}");
 
-        // Toggle between portrait and landscape layouts
         PortraitLayout.IsVisible = !isLandscape;
         LandscapeLayout.IsVisible = isLandscape;
 
         if (isLandscape)
         {
-            System.Diagnostics.Debug.WriteLine("🔄 Switching to landscape mode");
-
-            // Make sure landscape elements exist before accessing them
             if (LandscapeSongListView != null)
             {
-                // Sync selection from portrait to landscape WITHOUT triggering events
                 LandscapeSongListView.SelectionChanged -= OnSongSelected;
                 LandscapeSongListView.SelectedItem = SongListView.SelectedItem;
                 LandscapeSongListView.SelectionChanged += OnSongSelected;
-
-                System.Diagnostics.Debug.WriteLine($"🔄 Synced selection to landscape view: {SongListView.SelectedItem != null}");
             }
 
-            // Sync the landscape labels with portrait labels if there's a selection
             if (HasSelection && _selectedSong != null)
             {
-                System.Diagnostics.Debug.WriteLine($"🔄 Syncing selection data for: {_selectedSong.Title}");
+                if (LandscapeSelectedTitleLabel != null) LandscapeSelectedTitleLabel.Text = _selectedSong.Title;
+                if (LandscapeSelectedArtistLabel != null) LandscapeSelectedArtistLabel.Text = _selectedSong.Artist;
 
-                if (LandscapeSelectedTitleLabel != null)
-                    LandscapeSelectedTitleLabel.Text = _selectedSong.Title;
-                if (LandscapeSelectedArtistLabel != null)
-                    LandscapeSelectedArtistLabel.Text = _selectedSong.Artist;
-
-                // Sync chart picker
                 if (LandscapeChartPicker != null)
                 {
                     LandscapeChartPicker.SelectedIndexChanged -= OnChartChanged;
                     LandscapeChartPicker.Items.Clear();
                     foreach (var item in ChartPicker.Items)
-                    {
                         LandscapeChartPicker.Items.Add(item);
-                    }
                     LandscapeChartPicker.SelectedIndex = ChartPicker.SelectedIndex;
                     LandscapeChartPicker.SelectedIndexChanged += OnChartChanged;
                 }
@@ -136,329 +109,91 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine("🔄 Switching to portrait mode");
-
-            // Sync from landscape back to portrait
-            if (LandscapeSongListView != null && LandscapeSongListView.SelectedItem != null)
+            if (LandscapeSongListView?.SelectedItem != null)
             {
                 SongListView.SelectionChanged -= OnSongSelected;
                 SongListView.SelectedItem = LandscapeSongListView.SelectedItem;
                 SongListView.SelectionChanged += OnSongSelected;
-
-                System.Diagnostics.Debug.WriteLine($"🔄 Synced selection to portrait view");
             }
         }
     }
 
-    private void OnScrollSpeedChanged(object sender, ValueChangedEventArgs e)
+    // -------------------------------------------------------------------------
+    // App-package (embedded) song loading
+    // -------------------------------------------------------------------------
+
+    protected override void OnAppearing()
     {
-        ScrollSpeed = e.NewValue;
-        System.Diagnostics.Debug.WriteLine($"🎮 Scroll speed changed to: {ScrollSpeed:F1}x");
+        base.OnAppearing();
+        if (SongList.Count == 0)
+            _ = LoadEmbeddedSongsAsync();
     }
 
-    private async Task LoadAfterRender()
+    private async Task LoadEmbeddedSongsAsync()
     {
-        await Task.Delay(100); // let UI fully attach
-        await LoadEmbeddedSongs();
-    }
+        await Task.Delay(100); // allow UI to fully attach
 
-    private async Task LoadEmbeddedSongs()
-    {
         try
         {
-            System.Diagnostics.Debug.WriteLine("🎵 Loading embedded songs...");
-
             var loadedCount = 0;
 
             foreach (var songPath in GameConstants.Songs)
             {
                 try
                 {
-                    System.Diagnostics.Debug.WriteLine($"📂 Loading: {songPath}");
                     await using var stream = await FileSystem.OpenAppPackageFileAsync(songPath);
                     using var reader = new StreamReader(stream);
                     var content = await reader.ReadToEndAsync();
 
                     var song = SscParser.Parse(content, songPath);
-                    System.Diagnostics.Debug.WriteLine($"   Parsed: '{song.Title}' - Charts: {song.Charts?.Count ?? 0}");
-
                     if (song.Charts?.Count > 0)
                     {
-                        var series = GetGameSeries(songPath);
-
-                        if (!_songsBySeries.ContainsKey(series))
-                        {
-                            _songsBySeries[series] = new List<SscSong>();
-
-                            // Attempt to load banner safely now (not deferred inside ImageSource lambda)
-                            ImageSource? bannerImage = null;
-                            var bannerPath = $"banner_{series.Replace(" ", "").ToLower()}.png";
-
-                            try
-                            {
-                                await using var bannerStream = await FileSystem.OpenAppPackageFileAsync(bannerPath);
-                                // Copy into memory so the stream can be used later on the UI thread without further async work
-                                var ms = new MemoryStream();
-                                await bannerStream.CopyToAsync(ms);
-                                ms.Position = 0;
-                                bannerImage = ImageSource.FromStream(() => ms);
-                            }
-                            catch (Exception ex)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"❌ Failed to load banner '{bannerPath}': {ex.Message}");
-                                bannerImage = null;
-                            }
-
-                            GameSeriesList.Add(new GameSeriesItem
-                            {
-                                Name = series,
-                                Banner = bannerImage
-                            });
-                        }
-
-                        _songsBySeries[series].Add(song);
+                        AddSongToSeries(song, GetGameSeries(songPath), bannerPath: null);
                         loadedCount++;
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"   ⚠️ Skipped '{song.Title}' - no charts");
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"❌ Failed to load {songPath}: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[SongSelect] Failed to load embedded song {songPath}: {ex.Message}");
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine($"🎵 Successfully loaded {loadedCount} Phoenix songs");
-
-            // Show a message if no songs were loaded
             if (loadedCount == 0)
-            {
-                await MainThread.InvokeOnMainThreadAsync(async () =>
-                {
-                    await Task.Delay(50);
-                    await DisplayAlert("No Songs", "No embedded songs could be loaded. Please check that the song files are included in your project.", "OK");
-                });
-            }
+                await DisplayAlert("No Songs", "No embedded songs could be loaded.", "OK");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"❌ Failed to load embedded songs: {ex.Message}");
-            await MainThread.InvokeOnMainThreadAsync(async () =>
-            {
-                await Task.Delay(50);
-                await DisplayAlert("Error", $"Failed to load songs: {ex.Message}", "OK");
-            });
+            await DisplayAlert("Error", $"Failed to load embedded songs: {ex.Message}", "OK");
         }
     }
 
-    private void AddSong(SscSong song)
-    {
-        var item = new SongListItem
-        {
-            Song = song,
-            Title = song.Title,
-            Artist = song.Artist,
-            ChartSummary = GenerateChartSummary(song),
-            BackgroundImageSource = TryCreateBackground(song)
-        };
-        SongList.Add(item);
-    }
-
-    private static ImageSource? TryCreateBackground(SscSong song)
-    {
-        if (string.IsNullOrWhiteSpace(song.SourcePath) ||
-            string.IsNullOrWhiteSpace(song.BackgroundPath))
-            return null;
-
-        try
-        {
-            var baseDirectory = Path.GetDirectoryName(song.SourcePath);
-            if (string.IsNullOrWhiteSpace(baseDirectory))
-                return null;
-
-            // Normalize path for MAUI package
-            var relativePath = Path.Combine(baseDirectory,
-                song.BackgroundPath.Replace('\\', '/'))
-                .Replace('\\', '/'); // ensure forward slashes
-
-            return ImageSource.FromStream(() =>
-            {
-                return FileSystem
-                    .OpenAppPackageFileAsync(relativePath)
-                    .GetAwaiter()
-                    .GetResult();
-            });
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"❌ Background load failed: {ex.Message}");
-            return null;
-        }
-    }
-
-    private void PopulateCharts(SscSong? song)
-    {
-        if (song == null)
-        {
-            System.Diagnostics.Debug.WriteLine("❌ PopulateCharts called with NULL song!");
-            return;
-        }
-
-        System.Diagnostics.Debug.WriteLine($"🎵 PopulateCharts called for: '{song.Title}' by {song.Artist}");
-        System.Diagnostics.Debug.WriteLine($"🎵 Song.Charts is null: {song.Charts == null}");
-        System.Diagnostics.Debug.WriteLine($"🎵 Song.Charts.Count: {song.Charts?.Count ?? 0}");
-
-        // Clear both chart pickers
-        ChartPicker.Items.Clear();
-        if (LandscapeChartPicker != null)
-            LandscapeChartPicker.Items.Clear();
-
-        _currentSortedCharts.Clear();
-        SelectedChartBorder.IsVisible = false;
-
-        if (song.Charts == null || song.Charts.Count == 0)
-        {
-            System.Diagnostics.Debug.WriteLine($"❌ No charts available for this song. Charts null: {song.Charts == null}, Count: {song.Charts?.Count ?? 0}");
-            return;
-        }
-
-        System.Diagnostics.Debug.WriteLine($"🎵 Processing {song.Charts.Count} charts for '{song.Title}':");
-
-        // Debug: List all charts found
-        for (int i = 0; i < song.Charts.Count; i++)
-        {
-            var chart = song.Charts[i];
-            System.Diagnostics.Debug.WriteLine($"   Chart {i}: StepType='{chart.StepType}', Difficulty='{chart.Difficulty}', Meter={chart.Meter}, Notes={chart.Notes.Count}");
-        }
-
-        // Sort charts by StepType first, then by meter
-        _currentSortedCharts = song.Charts
-            .OrderBy(c => c.StepType?.ToLower() == "pump-single" ? 0 : 1) // Singles first
-            .ThenBy(c => c.Meter)
-            .ToList();
-
-        System.Diagnostics.Debug.WriteLine($"🎵 After sorting, have {_currentSortedCharts.Count} charts");
-
-        foreach (var chart in _currentSortedCharts)
-        {
-            var displayText = GetChartDisplayText(chart);
-            ChartPicker.Items.Add(displayText);
-            if (LandscapeChartPicker != null)
-                LandscapeChartPicker.Items.Add(displayText);
-            System.Diagnostics.Debug.WriteLine($"   Added chart: {displayText} (StepType: '{chart.StepType}', Difficulty: '{chart.Difficulty}', Meter: {chart.Meter})");
-        }
-
-        if (ChartPicker.Items.Count > 0)
-        {
-            ChartPicker.SelectedIndex = 0;
-            if (LandscapeChartPicker != null)
-                LandscapeChartPicker.SelectedIndex = 0;
-            _selectedChart = _currentSortedCharts.First();
-            System.Diagnostics.Debug.WriteLine($"   ✅ Selected first chart: {ChartPicker.Items[0]}");
-
-            // Show the selected chart display (portrait only now)
-            UpdateSelectedChartDisplay();
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine("   ❌ No charts to display after processing");
-        }
-    }
-
-    /// <summary>
-    /// Generates display text for a chart using S/D notation (e.g., "S5", "D12")
-    /// </summary>
-    private static string GetChartDisplayText(SscChart chart)
-    {
-        var stepPrefix = chart.StepType?.ToLower() switch
-        {
-            "pump-single" => "S",
-            "pump-double" => "D",
-            _ => ""
-        };
-
-        if (!string.IsNullOrEmpty(stepPrefix))
-        {
-            return $"{stepPrefix}{chart.Meter}";
-        }
-
-        // Fallback for charts without recognized StepType
-        return string.IsNullOrEmpty(chart.Difficulty)
-            ? $"Level {chart.Meter}"
-            : (chart.Meter > 0
-                ? $"{chart.Difficulty} {chart.Meter}"
-                : chart.Difficulty);
-    }
-
-    private static string GenerateChartSummary(SscSong song)
-    {
-        if (song.Charts.Count == 0)
-            return "No charts available";
-
-        // Group by StepType and get range for each
-        var singleCharts = song.Charts
-            .Where(c => c.StepType?.ToLower() == "pump-single" && c.Meter > 0)
-            .Select(c => c.Meter)
-            .OrderBy(d => d)
-            .Distinct()
-            .ToList();
-
-        var doubleCharts = song.Charts
-            .Where(c => c.StepType?.ToLower() == "pump-double" && c.Meter > 0)
-            .Select(c => c.Meter)
-            .OrderBy(d => d)
-            .Distinct()
-            .ToList();
-
-        var summaryParts = new List<string>();
-
-        if (singleCharts.Count > 0)
-        {
-            var sMin = singleCharts.First();
-            var sMax = singleCharts.Last();
-            summaryParts.Add(sMin == sMax ? $"S{sMin}" : $"S{sMin}-{sMax}");
-        }
-
-        if (doubleCharts.Count > 0)
-        {
-            var dMin = doubleCharts.First();
-            var dMax = doubleCharts.Last();
-            summaryParts.Add(dMin == dMax ? $"D{dMin}" : $"D{dMin}-{dMax}");
-        }
-
-        // Fallback for unknown step types
-        var otherCharts = song.Charts
-            .Where(c => c.StepType?.ToLower() != "pump-single" &&
-                       c.StepType?.ToLower() != "pump-double" &&
-                       c.Meter > 0)
-            .Select(c => c.Meter)
-            .OrderBy(d => d)
-            .Distinct()
-            .ToList();
-
-        if (otherCharts.Count > 0)
-        {
-            var oMin = otherCharts.First();
-            var oMax = otherCharts.Last();
-            summaryParts.Add(oMin == oMax ? $"L{oMin}" : $"L{oMin}-{oMax}");
-        }
-
-        if (summaryParts.Count == 0)
-            return $"{song.Charts.Count} chart(s)";
-
-        return $"{string.Join(", ", summaryParts)} • {song.Charts.Count} chart(s)";
-    }
+    // -------------------------------------------------------------------------
+    // External folder loading
+    // -------------------------------------------------------------------------
 
     private async void OnOpenFolderClicked(object sender, EventArgs e)
     {
         try
         {
-#if WINDOWS
-            await DisplayAlert("Feature Not Available", "External folder support coming soon for Windows!", "OK");
+            var result = await FolderPicker.Default.PickAsync(CancellationToken.None);
+
+            if (result == null || !result.IsSuccessful) return;
+
+            var folderPath = result.Folder.Path;
+            if (string.IsNullOrWhiteSpace(folderPath))
+            {
+                await DisplayAlert("Error", "Could not read the selected folder path.", "OK");
+                return;
+            }
+
+#if ANDROID
+            var safUri = folderPath.StartsWith("content://", StringComparison.OrdinalIgnoreCase)
+                ? folderPath
+                : ConvertPathToSafUri(folderPath);
+
+            await LoadSongsFromSafAsync(safUri);
 #else
-            await DisplayAlert("Feature Not Available", "External folder support coming soon!", "OK");
+            await LoadSongsFromFileSystemAsync(folderPath);
 #endif
         }
         catch (Exception ex)
@@ -467,227 +202,178 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         }
     }
 
-    private void OnSongSelected(object sender, SelectionChangedEventArgs e)
+#if ANDROID
+    /// <summary>
+    /// Converts a plain Android filesystem path (e.g. /storage/emulated/0/Songs or
+    /// /storage/XXXX-XXXX/Songs for SD card) to a SAF content:// tree URI.
+    /// </summary>
+    private static string ConvertPathToSafUri(string path)
     {
-        // Debug output
-        System.Diagnostics.Debug.WriteLine($"🎵 OnSongSelected called from {(sender == SongListView ? "Portrait" : "Landscape")}. Current selection count: {e.CurrentSelection.Count}");
+        path = path.Replace('\\', '/').TrimEnd('/');
+        const string authority = "com.android.externalstorage.documents";
 
-        // Handle selection from either CollectionView
-        var selectedItem = e.CurrentSelection.FirstOrDefault() as SongListItem;
-
-        if (selectedItem == null)
+        if (path.StartsWith("/storage/emulated/0", StringComparison.OrdinalIgnoreCase))
         {
-            System.Diagnostics.Debug.WriteLine("🎵 No selection or selection was cleared");
-            // No selection or selection was cleared
-            _selectedSong = null;
-            _selectedChart = null;
-            HasSelection = false;
-            return;
+            var relative = path["/storage/emulated/0".Length..].TrimStart('/');
+            var docId = string.IsNullOrEmpty(relative) ? "primary:" : $"primary:{relative}";
+            return $"content://{authority}/tree/{Uri.EscapeDataString(docId)}";
         }
 
-        System.Diagnostics.Debug.WriteLine($"🎵 Song selected: {selectedItem.Title} by {selectedItem.Artist}");
-
-        if (selectedItem.Song == null)
+        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2 && parts[0].Equals("storage", StringComparison.OrdinalIgnoreCase))
         {
-            System.Diagnostics.Debug.WriteLine("❌ selectedItem.Song is NULL! This is the problem.");
-            DisplayAlert("Error", "Selected song data is corrupted. Please restart the app.", "OK");
-            return;
+            var volumeId = parts[1];
+            var relative = parts.Length > 2 ? string.Join("/", parts.Skip(2)) : string.Empty;
+            var docId = string.IsNullOrEmpty(relative) ? $"{volumeId}:" : $"{volumeId}:{relative}";
+            return $"content://{authority}/tree/{Uri.EscapeDataString(docId)}";
         }
 
-        // Check if the same song was selected again (to allow deselection)
-        if (_selectedSong == selectedItem.Song)
-        {
-            System.Diagnostics.Debug.WriteLine($"🎵 Same song selected again, deselecting");
-            // Clear the selection immediately and return - don't trigger more events
-            _selectedSong = null;
-            _selectedChart = null;
-            HasSelection = false;
-
-            // Clear the selection in both views WITHOUT triggering events
-            SongListView.SelectionChanged -= OnSongSelected;
-            SongListView.SelectedItem = null;
-            SongListView.SelectionChanged += OnSongSelected;
-
-            if (LandscapeSongListView != null)
-            {
-                LandscapeSongListView.SelectionChanged -= OnSongSelected;
-                LandscapeSongListView.SelectedItem = null;
-                LandscapeSongListView.SelectionChanged += OnSongSelected;
-            }
-
-            System.Diagnostics.Debug.WriteLine("🎵 Song deselected and cleared");
-            return;
-        }
-
-        // Set the selected song and populate charts
-        _selectedSong = selectedItem.Song;
-        System.Diagnostics.Debug.WriteLine($"🎵 _selectedSong set to: {_selectedSong?.Title ?? "NULL"}");
-        HasSelection = true;
-
-        // Update labels for both orientations
-        SelectedTitleLabel.Text = _selectedSong.Title;
-        SelectedArtistLabel.Text = _selectedSong.Artist;
-
-        // Update landscape labels if they exist
-        if (LandscapeSelectedTitleLabel != null)
-            LandscapeSelectedTitleLabel.Text = _selectedSong.Title;
-        if (LandscapeSelectedArtistLabel != null)
-            LandscapeSelectedArtistLabel.Text = _selectedSong.Artist;
-
-        // Sync selection between views WITHOUT triggering events
-        if (sender == SongListView && LandscapeSongListView != null)
-        {
-            LandscapeSongListView.SelectionChanged -= OnSongSelected;
-            LandscapeSongListView.SelectedItem = selectedItem;
-            LandscapeSongListView.SelectionChanged += OnSongSelected;
-        }
-        else if (sender == LandscapeSongListView && SongListView != null)
-        {
-            SongListView.SelectionChanged -= OnSongSelected;
-            SongListView.SelectedItem = selectedItem;
-            SongListView.SelectionChanged += OnSongSelected;
-        }
-
-        System.Diagnostics.Debug.WriteLine($"🎵 About to call PopulateCharts with song: {_selectedSong?.Title ?? "NULL"}");
-        PopulateCharts(_selectedSong);
-
-        System.Diagnostics.Debug.WriteLine($"🎵 Song selection completed. HasSelection: {HasSelection}");
+        return path; // fallback — scanner will log if it still fails
     }
 
-    private void OnChartChanged(object sender, EventArgs e)
+    private async Task LoadSongsFromSafAsync(string treeUriString)
     {
-        var picker = sender as Picker;
-        var selectedIndex = picker?.SelectedIndex ?? -1;
+        var context = Android.App.Application.Context;
+        var loadedCount = 0;
+        var errorCount = 0;
 
-        if (_selectedSong == null || selectedIndex < 0 || selectedIndex >= _currentSortedCharts.Count)
-        {
-            System.Diagnostics.Debug.WriteLine($"⚠️ Chart changed but invalid selection. Index: {selectedIndex}, Charts count: {_currentSortedCharts.Count}");
-            SelectedChartBorder.IsVisible = false;
-            return;
-        }
-
-        // Sync both pickers
-        if (picker == ChartPicker && LandscapeChartPicker != null)
-            LandscapeChartPicker.SelectedIndex = selectedIndex;
-        else if (picker == LandscapeChartPicker)
-            ChartPicker.SelectedIndex = selectedIndex;
-
-        _selectedChart = _currentSortedCharts[selectedIndex];
-        System.Diagnostics.Debug.WriteLine($"📝 Chart changed to: {ChartPicker.Items[selectedIndex]} - Notes: {_selectedChart.Notes.Count}");
-
-        // Update the selected chart display
-        UpdateSelectedChartDisplay();
-    }
-
-    private void UpdateSelectedChartDisplay()
-    {
-        if (_selectedChart == null)
-        {
-            SelectedChartBorder.IsVisible = false;
-            return;
-        }
-
-        // Display chart using S/D notation
-        var chartNotation = GetChartDisplayText(_selectedChart);
-
-        // Update portrait display (landscape uses the picker directly)
-        SelectedChartLevelLabel.Text = chartNotation;
-        SelectedChartNotesLabel.Text = $"{_selectedChart.Notes.Count} notes";
-
-        // Show note count for debugging
-        System.Diagnostics.Debug.WriteLine($"📊 Chart {chartNotation} has {_selectedChart.Notes.Count} notes");
-
-        SelectedChartBorder.IsVisible = true;
-    }
-
-    private async void OnPlayClicked(object sender, EventArgs e)
-    {
-        if (_selectedSong == null || _selectedChart == null)
-        {
-            await DisplayAlert("No Selection", "Please select a song and chart first.", "OK");
-            return;
-        }
-
+        List<PumpMaui.Platforms.Android.ScanResult> scanResults;
         try
         {
-            System.Diagnostics.Debug.WriteLine($"🎮 Starting game with:");
-            System.Diagnostics.Debug.WriteLine($"   Song: {_selectedSong.Title}");
-            System.Diagnostics.Debug.WriteLine($"   Chart: {_selectedChart.Difficulty} {_selectedChart.Meter}");
-            System.Diagnostics.Debug.WriteLine($"   Scroll Speed: {ScrollSpeed:F1}x");
-            System.Diagnostics.Debug.WriteLine($"   Note Skin: {NoteSkin}");
-
-            var audioUrl = !string.IsNullOrWhiteSpace(_selectedSong.BaseUrl)
-                ? RemoteSongService.ResolveAssetUrl(_selectedSong, _selectedSong.MusicPath)
-                : null;
-
-            if (!string.IsNullOrWhiteSpace(audioUrl))
-            {
-                // 🔥 FORCE proper URL encoding
-                audioUrl = new Uri(audioUrl).AbsoluteUri;
-            }
-
-            var gameData = new GameStartData
-            {
-                Song = _selectedSong,
-                Chart = _selectedChart,
-                ScrollSpeed = ScrollSpeed,
-                NoteSkin = NoteSkin,
-                RemoteAudioUrl = audioUrl   // add this property to GameStartData
-            };
-
-            var json = JsonSerializer.Serialize(gameData);
-            var encodedJson = Uri.EscapeDataString(json);
-
-            var queryParams = new Dictionary<string, object>
-            {
-                { "songData", encodedJson }
-            };
-
-            await Shell.Current.GoToAsync("GamePage", queryParams);
+            scanResults = await Task.Run(() =>
+                PumpMaui.Platforms.Android.AndroidSafScanner.Scan(context, treeUriString));
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"❌ Error starting game: {ex.Message}");
-            await DisplayAlert("Error", $"Failed to start game: {ex.Message}", "OK");
+            await DisplayAlert("Error", $"Failed to scan folder: {ex.Message}", "OK");
+            return;
         }
-    }
 
-    private void OnCloseSelectionClicked(object sender, EventArgs e)
-    {
-        // Clear the selection from both views
-        SongListView.SelectedItem = null;
-        LandscapeSongListView.SelectedItem = null;
-        _selectedSong = null;
-        _selectedChart = null;
-        HasSelection = false;
-
-        // Clear both chart pickers
-        ChartPicker.Items.Clear();
-        LandscapeChartPicker.Items.Clear();
-        _currentSortedCharts.Clear();
-        SelectedChartBorder.IsVisible = false;
-
-        // Clear all labels
-        SelectedTitleLabel.Text = "";
-        SelectedArtistLabel.Text = "";
-        LandscapeSelectedTitleLabel.Text = "";
-        LandscapeSelectedArtistLabel.Text = "";
-
-        System.Diagnostics.Debug.WriteLine("🎵 Selection cleared by user");
-    }
-
-    protected override void OnAppearing()
-    {
-        base.OnAppearing();
-        if (SongList.Count == 0)
+        if (scanResults.Count == 0)
         {
-            _ = LoadAfterRender();
+            await DisplayAlert("No Songs Found",
+                "No .ssc files were found.\n\nExpected structure:\n  Root / Game Series / Song / song.ssc",
+                "OK");
+            return;
         }
+
+        foreach (var result in scanResults)
+        {
+            try
+            {
+                var content = await PumpMaui.Platforms.Android.AndroidSafScanner.ReadTextAsync(context, result.SscUri);
+                var song = SscParser.Parse(content, result.SscUri);
+                song.SongDocumentUri = result.SongDocumentUri;
+
+                if (song.Charts.Count == 0) continue;
+
+                if (!_songsBySeries.ContainsKey(result.SeriesName))
+                {
+                    _songsBySeries[result.SeriesName] = [];
+
+                    ImageSource? bannerImage = null;
+                    if (!string.IsNullOrEmpty(result.BannerUri))
+                    {
+                        var capturedUri = result.BannerUri;
+                        bannerImage = ImageSource.FromStream(
+                            () => PumpMaui.Platforms.Android.AndroidSafScanner.OpenRead(context, capturedUri));
+                    }
+
+                    GameSeriesList.Add(new GameSeriesItem { Name = result.SeriesName, Banner = bannerImage });
+                }
+
+                _songsBySeries[result.SeriesName].Add(song);
+                loadedCount++;
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                System.Diagnostics.Debug.WriteLine($"[SongSelect] SAF load failed for {result.SscUri}: {ex.Message}");
+            }
+        }
+
+        var message = loadedCount == 0
+            ? "No songs with valid charts were found.\n\nExpected structure:\n  Root / Game Series / Song / song.ssc"
+            : $"Loaded {loadedCount} song(s) across {_songsBySeries.Count} series.";
+
+        if (errorCount > 0)
+            message += $"\n({errorCount} file(s) failed to parse.)";
+
+        await DisplayAlert(loadedCount == 0 ? "No Songs Found" : "Songs Loaded", message, "OK");
     }
+#endif
+
+    private async Task LoadSongsFromFileSystemAsync(string rootPath)
+    {
+        var loadedCount = 0;
+        var errorCount = 0;
+
+        try
+        {
+            if (!Directory.Exists(rootPath))
+            {
+                await DisplayAlert("Folder Not Found", $"The path could not be accessed:\n{rootPath}", "OK");
+                return;
+            }
+
+            foreach (var seriesDir in Directory.GetDirectories(rootPath))
+            {
+                var seriesName = Path.GetFileName(seriesDir).ToUpperInvariant();
+
+                foreach (var songDir in Directory.GetDirectories(seriesDir))
+                {
+                    var sscFiles = Directory.GetFiles(songDir, "*.ssc");
+                    if (sscFiles.Length == 0) continue;
+
+                    try
+                    {
+                        var content = await File.ReadAllTextAsync(sscFiles[0]);
+                        var song = SscParser.Parse(content, sscFiles[0]);
+                        if (song.Charts.Count == 0) continue;
+
+                        var bannerPath = new[] {
+                            Path.Combine(seriesDir, "banner.png"),
+                            Path.Combine(seriesDir, "banner.jpg"),
+                        }.FirstOrDefault(File.Exists);
+
+                        AddSongToSeries(song, seriesName, bannerPath);
+                        loadedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        System.Diagnostics.Debug.WriteLine($"[SongSelect] Failed to load {sscFiles[0]}: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            await DisplayAlert("Permission Denied", $"Cannot read:\n{rootPath}", "OK");
+            return;
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Error", $"Failed to scan folder: {ex.Message}", "OK");
+            return;
+        }
+
+        var message = loadedCount == 0
+            ? "No songs with valid charts were found.\n\nExpected structure:\n  Root / Game Series / Song / song.ssc"
+            : $"Loaded {loadedCount} song(s) across {_songsBySeries.Count} series.";
+
+        if (errorCount > 0)
+            message += $"\n({errorCount} file(s) failed to parse.)";
+
+        await DisplayAlert(loadedCount == 0 ? "No Songs Found" : "Songs Loaded", message, "OK");
+    }
+
+    // -------------------------------------------------------------------------
+    // Remote URL loading
+    // -------------------------------------------------------------------------
 
     private async void OnLoadRemoteClicked(object sender, EventArgs e)
     {
-        // Prompt for the base URL (or you can wire this to a persistent Entry in XAML)
         var url = await DisplayPromptAsync(
             "Remote Song Library",
             "Enter your CDN URL:",
@@ -696,70 +382,48 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
         if (string.IsNullOrWhiteSpace(url)) return;
 
-        // Persist so the user doesn't have to retype it
         Preferences.Set("RemoteBaseUrl", url.TrimEnd('/'));
 
-        LoadingLabelPortrait.IsVisible = true;
-        LoadingProgressBarPortrait.IsVisible = true;
-        LoadingProgressBarPortrait.Progress = 0;
-
-        LoadingLabelLandscape.IsVisible = true;
-        LoadingProgressBarLandscape.IsVisible = true;
-        LoadingProgressBarLandscape.Progress = 0;
+        SetLoadingVisible(true);
 
         try
         {
-            // Show a simple loading indicator
             LoadRemoteButtonPortrait.IsEnabled = false;
             LoadRemoteButtonLandscape.IsEnabled = false;
             LoadRemoteButtonPortrait.Text = "Loading...";
             LoadRemoteButtonLandscape.Text = "Loading...";
 
-            var progress = new Progress<LoadProgress>(p =>
+            var progress = new Progress<LoadProgress>(p => MainThread.BeginInvokeOnMainThread(() =>
             {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    LoadingLabelPortrait.Text = $"{p.Message} ({p.Current}/{p.Total})";
-                    LoadingProgressBarPortrait.Progress = p.Percentage;
-
-                    LoadingLabelLandscape.Text = $"{p.Message} ({p.Current}/{p.Total})";
-                    LoadingProgressBarLandscape.Progress = p.Percentage;
-                });
-            });
+                var text = $"{p.Message} ({p.Current}/{p.Total})";
+                LoadingLabelPortrait.Text = text;
+                LoadingProgressBarPortrait.Progress = p.Percentage;
+                LoadingLabelLandscape.Text = text;
+                LoadingProgressBarLandscape.Progress = p.Percentage;
+            }));
 
             var songs = await RemoteSongService.LoadSongsAsync(url, progress);
 
-            foreach (var song in songs)
+            foreach (var song in songs.Where(s => s.Charts.Count > 0))
             {
-                if (song.Charts.Count > 0)
+                var series = GetGameSeriesFromUrl(song.SourcePath ?? string.Empty);
+                if (!_songsBySeries.ContainsKey(series))
                 {
-                    var series = GetGameSeriesFromUrl(song.SourcePath ?? string.Empty);
-
-                    if (!_songsBySeries.ContainsKey(series))
+                    _songsBySeries[series] = [];
+                    GameSeriesList.Add(new GameSeriesItem
                     {
-                        _songsBySeries[series] = new List<SscSong>();
-
-                        GameSeriesList.Add(new GameSeriesItem
-                        {
-                            Name = series,
-                            Banner = ImageSource.FromStream(() =>
-                            {
-                                return FileSystem
-                                    .OpenAppPackageFileAsync($"banner_{series.Replace(" ", "").ToLower()}.png")
-                                    .GetAwaiter()
-                                    .GetResult();
-                            })
-                        });
-                    }
-
-                    _songsBySeries[series].Add(song);
+                        Name = series,
+                        Banner = ImageSource.FromStream(() =>
+                            FileSystem.OpenAppPackageFileAsync($"banner_{series.Replace(" ", "").ToLower()}.png")
+                                      .GetAwaiter().GetResult())
+                    });
                 }
+                _songsBySeries[series].Add(song);
             }
 
-            if (songs.Count == 0)
-                await DisplayAlert("No Songs", "No songs were found at that URL.", "OK");
-            else
-                await DisplayAlert("Done", $"Loaded {songs.Count} remote song(s).", "OK");
+            await DisplayAlert(songs.Count == 0 ? "No Songs" : "Done",
+                songs.Count == 0 ? "No songs found at that URL." : $"Loaded {songs.Count} remote song(s).",
+                "OK");
         }
         catch (Exception ex)
         {
@@ -771,106 +435,384 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             LoadRemoteButtonPortrait.Text = "Load from URL";
             LoadRemoteButtonLandscape.IsEnabled = true;
             LoadRemoteButtonLandscape.Text = "Load from URL";
-
-            LoadingLabelPortrait.IsVisible = false;
-            LoadingProgressBarPortrait.IsVisible = false;
-            LoadingProgressBarPortrait.Progress = 0;
-
-            LoadingLabelLandscape.IsVisible = false;
-            LoadingProgressBarLandscape.IsVisible = false;
-            LoadingProgressBarLandscape.Progress = 0;
+            SetLoadingVisible(false);
         }
     }
 
-    // Helper
-    private string GetGameSeries(string path)
+    private void SetLoadingVisible(bool visible)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            return "UNKNOWN";
-
-        // Normalize slashes
-        path = path.Replace("\\", "/");
-
-        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-        // Find the part that contains " - "
-        var seriesPart = parts.FirstOrDefault(p => p.Contains(" - "));
-        if (string.IsNullOrWhiteSpace(seriesPart))
-            return "UNKNOWN";
-
-        // "16 - Phoenix " → "Phoenix"
-        var split = seriesPart.Split('-', 2);
-        if (split.Length < 2)
-            return "UNKNOWN";
-
-        return split[1].Trim().ToUpperInvariant();
+        LoadingLabelPortrait.IsVisible = visible;
+        LoadingProgressBarPortrait.IsVisible = visible;
+        LoadingProgressBarPortrait.Progress = 0;
+        LoadingLabelLandscape.IsVisible = visible;
+        LoadingProgressBarLandscape.IsVisible = visible;
+        LoadingProgressBarLandscape.Progress = 0;
     }
 
-    // Helper
-    private string GetGameSeriesFromUrl(string url)
+    // -------------------------------------------------------------------------
+    // Song / chart list management
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Adds a song to the internal series dictionary and <see cref="GameSeriesList" />,
+    /// creating the series entry if it doesn't exist yet.
+    /// </summary>
+    private void AddSongToSeries(SscSong song, string seriesName, string? bannerPath)
     {
-        if (string.IsNullOrWhiteSpace(url))
-            return "UNKNOWN";
+        if (!_songsBySeries.ContainsKey(seriesName))
+        {
+            _songsBySeries[seriesName] = [];
 
-        var uri = new Uri(url);
+            ImageSource? bannerImage = null;
 
-        // AbsolutePath is already URL-decoded except for some cases
-        var path = Uri.UnescapeDataString(uri.AbsolutePath);
+            if (bannerPath != null)
+            {
+                // External file — use stream so it works on Android
+                var captured = bannerPath;
+                bannerImage = ImageSource.FromStream(() => File.OpenRead(captured));
+            }
+            else
+            {
+                // Try loading an embedded banner from the app package
+                var embeddedBannerPath = $"banner_{seriesName.Replace(" ", "").ToLower()}.png";
+                try
+                {
+                    var ms = new MemoryStream();
+                    using var s = FileSystem.OpenAppPackageFileAsync(embeddedBannerPath).GetAwaiter().GetResult();
+                    s.CopyTo(ms);
+                    ms.Position = 0;
+                    bannerImage = ImageSource.FromStream(() => ms);
+                }
+                catch { /* no banner — that's fine */ }
+            }
 
-        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            GameSeriesList.Add(new GameSeriesItem { Name = seriesName, Banner = bannerImage });
+        }
 
-        if (parts.Length == 0)
-            return "UNKNOWN";
-
-        var seriesPart = parts[0]; // "16 - PHOENIX"
-
-        var split = seriesPart.Split('-', 2);
-        if (split.Length < 2)
-            return "UNKNOWN";
-
-        return split[1].Trim().ToUpperInvariant();
+        _songsBySeries[seriesName].Add(song);
     }
+
+    private void AddSong(SscSong song)
+    {
+        SongList.Add(new SongListItem
+        {
+            Song = song,
+            Title = song.Title,
+            Artist = song.Artist,
+            ChartSummary = GenerateChartSummary(song),
+            BackgroundImageSource = TryCreateBackground(song)
+        });
+    }
+
+    private static ImageSource? TryCreateBackground(SscSong song)
+    {
+        if (string.IsNullOrWhiteSpace(song.SourcePath) || string.IsNullOrWhiteSpace(song.BackgroundPath))
+            return null;
+
+        try
+        {
+            var baseDir = Path.GetDirectoryName(song.SourcePath);
+            if (string.IsNullOrWhiteSpace(baseDir)) return null;
+
+            if (!Path.IsPathRooted(song.SourcePath))
+            {
+                // Embedded app-package asset
+                var relativePath = Path.Combine(baseDir, song.BackgroundPath.Replace('\\', '/'))
+                                       .Replace('\\', '/');
+                return ImageSource.FromStream(() =>
+                    FileSystem.OpenAppPackageFileAsync(relativePath).GetAwaiter().GetResult());
+            }
+            else
+            {
+                // External file
+                var absolutePath = Path.Combine(baseDir,
+                    song.BackgroundPath.Replace('/', Path.DirectorySeparatorChar));
+
+                if (!File.Exists(absolutePath)) return null;
+                return ImageSource.FromStream(() => File.OpenRead(absolutePath));
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SongSelect] Background load failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Series / song selection
+    // -------------------------------------------------------------------------
 
     private void OnSeriesSelected(object sender, SelectionChangedEventArgs e)
     {
         var selected = e.CurrentSelection.FirstOrDefault() as GameSeriesItem;
-        if (selected == null)
-            return;
+        if (selected == null) return;
 
         SongList.Clear();
 
         if (_songsBySeries.TryGetValue(selected.Name, out var songs))
-        {
             foreach (var song in songs)
                 AddSong(song);
-        }
 
-        // 🔥 Switch UI
         IsSeriesSelectionVisible = false;
     }
 
     private void OnBackToSeriesClicked(object sender, EventArgs e)
     {
-        // Clear songs + selection
         SongList.Clear();
         _selectedSong = null;
         _selectedChart = null;
         HasSelection = false;
 
-        // If you have both layouts:
         PortraitSeriesCollectionView.SelectedItem = null;
         LandscapeSeriesCollectionView.SelectedItem = null;
 
-        // Show series again
         IsSeriesSelectionVisible = true;
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    private void OnSongSelected(object sender, SelectionChangedEventArgs e)
     {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        var selectedItem = e.CurrentSelection.FirstOrDefault() as SongListItem;
+
+        if (selectedItem == null)
+        {
+            _selectedSong = null;
+            _selectedChart = null;
+            HasSelection = false;
+            return;
+        }
+
+        // Tap the same song again to deselect
+        if (_selectedSong == selectedItem.Song)
+        {
+            _selectedSong = null;
+            _selectedChart = null;
+            HasSelection = false;
+
+            SongListView.SelectionChanged -= OnSongSelected;
+            SongListView.SelectedItem = null;
+            SongListView.SelectionChanged += OnSongSelected;
+
+            if (LandscapeSongListView != null)
+            {
+                LandscapeSongListView.SelectionChanged -= OnSongSelected;
+                LandscapeSongListView.SelectedItem = null;
+                LandscapeSongListView.SelectionChanged += OnSongSelected;
+            }
+
+            return;
+        }
+
+        _selectedSong = selectedItem.Song;
+        HasSelection = true;
+
+        SelectedTitleLabel.Text = _selectedSong.Title;
+        SelectedArtistLabel.Text = _selectedSong.Artist;
+
+        if (LandscapeSelectedTitleLabel != null) LandscapeSelectedTitleLabel.Text = _selectedSong.Title;
+        if (LandscapeSelectedArtistLabel != null) LandscapeSelectedArtistLabel.Text = _selectedSong.Artist;
+
+        // Sync the other CollectionView without re-firing the event
+        if (sender == SongListView && LandscapeSongListView != null)
+        {
+            LandscapeSongListView.SelectionChanged -= OnSongSelected;
+            LandscapeSongListView.SelectedItem = selectedItem;
+            LandscapeSongListView.SelectionChanged += OnSongSelected;
+        }
+        else if (sender == LandscapeSongListView)
+        {
+            SongListView.SelectionChanged -= OnSongSelected;
+            SongListView.SelectedItem = selectedItem;
+            SongListView.SelectionChanged += OnSongSelected;
+        }
+
+        PopulateCharts(_selectedSong);
     }
+
+    private void OnCloseSelectionClicked(object sender, EventArgs e)
+    {
+        SongListView.SelectedItem = null;
+        LandscapeSongListView.SelectedItem = null;
+        _selectedSong = null;
+        _selectedChart = null;
+        HasSelection = false;
+
+        ChartPicker.Items.Clear();
+        LandscapeChartPicker.Items.Clear();
+        _currentSortedCharts.Clear();
+        SelectedChartBorder.IsVisible = false;
+
+        SelectedTitleLabel.Text = "";
+        SelectedArtistLabel.Text = "";
+        LandscapeSelectedTitleLabel.Text = "";
+        LandscapeSelectedArtistLabel.Text = "";
+    }
+
+    // -------------------------------------------------------------------------
+    // Chart selection
+    // -------------------------------------------------------------------------
+
+    private void PopulateCharts(SscSong? song)
+    {
+        ChartPicker.Items.Clear();
+        LandscapeChartPicker?.Items.Clear();
+        _currentSortedCharts.Clear();
+        SelectedChartBorder.IsVisible = false;
+
+        if (song?.Charts == null || song.Charts.Count == 0) return;
+
+        _currentSortedCharts = song.Charts
+            .OrderBy(c => c.StepType?.ToLower() == "pump-single" ? 0 : 1)
+            .ThenBy(c => c.Meter)
+            .ToList();
+
+        foreach (var chart in _currentSortedCharts)
+        {
+            var text = GetChartDisplayText(chart);
+            ChartPicker.Items.Add(text);
+            LandscapeChartPicker?.Items.Add(text);
+        }
+
+        if (ChartPicker.Items.Count > 0)
+        {
+            ChartPicker.SelectedIndex = 0;
+            if (LandscapeChartPicker != null)
+                LandscapeChartPicker.SelectedIndex = 0;
+
+            _selectedChart = _currentSortedCharts.First();
+            UpdateSelectedChartDisplay();
+        }
+    }
+
+    private void OnChartChanged(object sender, EventArgs e)
+    {
+        var picker = sender as Picker;
+        var selectedIndex = picker?.SelectedIndex ?? -1;
+
+        if (_selectedSong == null || selectedIndex < 0 || selectedIndex >= _currentSortedCharts.Count)
+        {
+            SelectedChartBorder.IsVisible = false;
+            return;
+        }
+
+        if (picker == ChartPicker && LandscapeChartPicker != null)
+            LandscapeChartPicker.SelectedIndex = selectedIndex;
+        else if (picker == LandscapeChartPicker)
+            ChartPicker.SelectedIndex = selectedIndex;
+
+        _selectedChart = _currentSortedCharts[selectedIndex];
+        UpdateSelectedChartDisplay();
+    }
+
+    private void UpdateSelectedChartDisplay()
+    {
+        if (_selectedChart == null) { SelectedChartBorder.IsVisible = false; return; }
+
+        SelectedChartLevelLabel.Text = GetChartDisplayText(_selectedChart);
+        SelectedChartNotesLabel.Text = $"{_selectedChart.Notes.Count} notes";
+        SelectedChartBorder.IsVisible = true;
+    }
+
+    // -------------------------------------------------------------------------
+    // Play
+    // -------------------------------------------------------------------------
+
+    private async void OnPlayClicked(object sender, EventArgs e)
+    {
+        if (_selectedSong == null || _selectedChart == null)
+        {
+            await DisplayAlert("No Selection", "Please select a song and chart first.", "OK");
+            return;
+        }
+
+        try
+        {
+            var audioUrl = !string.IsNullOrWhiteSpace(_selectedSong.BaseUrl)
+                ? new Uri(RemoteSongService.ResolveAssetUrl(_selectedSong, _selectedSong.MusicPath)).AbsoluteUri
+                : null;
+
+            var gameData = new GameStartData
+            {
+                Song = _selectedSong,
+                Chart = _selectedChart,
+                ScrollSpeed = ScrollSpeed,
+                NoteSkin = NoteSkin,
+                RemoteAudioUrl = audioUrl
+            };
+
+            var encodedJson = Uri.EscapeDataString(JsonSerializer.Serialize(gameData));
+            await Shell.Current.GoToAsync("GamePage", new Dictionary<string, object> { { "songData", encodedJson } });
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Error", $"Failed to start game: {ex.Message}", "OK");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static string GetChartDisplayText(SscChart chart)
+    {
+        var prefix = chart.StepType?.ToLower() switch
+        {
+            "pump-single" => "S",
+            "pump-double" => "D",
+            _ => ""
+        };
+
+        if (!string.IsNullOrEmpty(prefix)) return $"{prefix}{chart.Meter}";
+
+        return string.IsNullOrEmpty(chart.Difficulty)
+            ? $"Level {chart.Meter}"
+            : chart.Meter > 0 ? $"{chart.Difficulty} {chart.Meter}" : chart.Difficulty;
+    }
+
+    private static string GenerateChartSummary(SscSong song)
+    {
+        if (song.Charts.Count == 0) return "No charts available";
+
+        var parts = new List<string>();
+
+        var singles = song.Charts.Where(c => c.StepType?.ToLower() == "pump-single" && c.Meter > 0)
+                          .Select(c => c.Meter).Distinct().OrderBy(x => x).ToList();
+        var doubles = song.Charts.Where(c => c.StepType?.ToLower() == "pump-double" && c.Meter > 0)
+                          .Select(c => c.Meter).Distinct().OrderBy(x => x).ToList();
+
+        if (singles.Count > 0) parts.Add(singles.First() == singles.Last() ? $"S{singles.First()}" : $"S{singles.First()}-{singles.Last()}");
+        if (doubles.Count > 0) parts.Add(doubles.First() == doubles.Last() ? $"D{doubles.First()}" : $"D{doubles.First()}-{doubles.Last()}");
+
+        return parts.Count == 0
+            ? $"{song.Charts.Count} chart(s)"
+            : $"{string.Join(", ", parts)} • {song.Charts.Count} chart(s)";
+    }
+
+    private static string GetGameSeries(string path)
+    {
+        path = path.Replace('\\', '/');
+        var part = path.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                       .FirstOrDefault(p => p.Contains(" - "));
+        if (string.IsNullOrEmpty(part)) return "UNKNOWN";
+        var split = part.Split('-', 2);
+        return split.Length < 2 ? "UNKNOWN" : split[1].Trim().ToUpperInvariant();
+    }
+
+    private static string GetGameSeriesFromUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "UNKNOWN";
+        var path = Uri.UnescapeDataString(new Uri(url).AbsolutePath);
+        var part = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrEmpty(part)) return "UNKNOWN";
+        var split = part.Split('-', 2);
+        return split.Length < 2 ? "UNKNOWN" : split[1].Trim().ToUpperInvariant();
+    }
+
+    private void OnScrollSpeedChanged(object sender, ValueChangedEventArgs e) => ScrollSpeed = e.NewValue;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
 
 public class SongListItem

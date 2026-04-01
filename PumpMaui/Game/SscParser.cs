@@ -186,9 +186,19 @@ public static class SscParser
         }
 
         var stepType = chartTags.GetValueOrDefault("STEPSTYPE") ?? "";
-        if (!stepType.Equals("pump-single", StringComparison.OrdinalIgnoreCase) &&
-            !stepType.Equals("dance-single", StringComparison.OrdinalIgnoreCase))
+
+        // Accept all known pump/dance step types
+        var isKnownStepType =
+            stepType.Equals("pump-single", StringComparison.OrdinalIgnoreCase) ||
+            stepType.Equals("pump-double", StringComparison.OrdinalIgnoreCase) ||
+            stepType.Equals("dance-single", StringComparison.OrdinalIgnoreCase) ||
+            stepType.Equals("dance-double", StringComparison.OrdinalIgnoreCase);
+
+        if (!isKnownStepType)
+        {
+            System.Diagnostics.Debug.WriteLine($"   ⚠️ Skipping unknown STEPSTYPE: '{stepType}'");
             return null;
+        }
 
         var description = chartTags.GetValueOrDefault("DESCRIPTION") ?? "";
         var difficulty = chartTags.GetValueOrDefault("DIFFICULTY") ?? "Beginner";
@@ -219,15 +229,9 @@ public static class SscParser
             var line = lines[idx].Trim();
             if (string.IsNullOrEmpty(line)) continue;
 
-            // If line contains commas (measure separators) or is a row of digit chars, assume measure start
-            if (line.Contains(',') || (line.Length >= 5 && line.All(c => c >= '0' && c <= '4' || c == ' ')))
-            {
-                measureStart = idx;
-                break;
-            }
-
-            // Another heuristic: line that is only 0-4 characters sequences (rows)
-            if (line.Length >= 5 && line.All(c => c >= '0' && c <= '4'))
+            // Accept rows of 5 chars (pump-single) or 10 chars (pump-double / dance-double)
+            var isNoteRow = line.Length >= 5 && line.All(c => c >= '0' && c <= '4' || c == ' ');
+            if (line.Contains(',') || isNoteRow)
             {
                 measureStart = idx;
                 break;
@@ -235,9 +239,13 @@ public static class SscParser
         }
 
         var measuresText = string.Join('\n', lines.Skip(measureStart));
-        var notes = ParseNotes(measuresText, bpmChanges, offsetSeconds);
+        var notes = ParseNotes(measuresText, bpmChanges, offsetSeconds, stepType);
 
-        if (notes.Count == 0) return null;
+        if (notes.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"   ⚠️ No notes parsed for {stepType} {difficulty} {meter}");
+            return null;
+        }
 
         return new SscChart
         {
@@ -374,10 +382,16 @@ public static class SscParser
         return changes;
     }
 
-    private static List<ChartNote> ParseNotes(string notesText, IReadOnlyList<BpmChange> bpmChanges, double offsetSeconds)
+    private static List<ChartNote> ParseNotes(string notesText, IReadOnlyList<BpmChange> bpmChanges, double offsetSeconds, string stepType = "pump-single")
     {
         var notes = new List<ChartNote>();
         if (string.IsNullOrWhiteSpace(notesText) || bpmChanges == null || bpmChanges.Count == 0) return notes;
+
+        // pump-double / dance-double rows are 10 characters wide; singles are 5
+        var isDouble =
+            stepType.Equals("pump-double", StringComparison.OrdinalIgnoreCase) ||
+            stepType.Equals("dance-double", StringComparison.OrdinalIgnoreCase);
+        var expectedRowLength = isDouble ? 10 : 5;
 
         notesText = notesText.Trim().TrimEnd(';');
 
@@ -386,7 +400,7 @@ public static class SscParser
             .Select(measure => measure
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(SanitizeRow)
-                .Where(row => row.Length >= 5 && row.All(c => c >= '0' && c <= '4'))
+                .Where(row => row.Length >= expectedRowLength && row.All(c => c >= '0' && c <= '4'))
                 .ToList())
             .Where(measure => measure.Count > 0)
             .ToList();
@@ -402,7 +416,8 @@ public static class SscParser
                 var row = rows[rowIndex];
                 var beat = (measureIndex * 4d) + (rowIndex * rowBeatSpan);
 
-                for (var lane = 0; lane < Math.Min(5, row.Length); lane++)
+                // Only read up to the expected lane count to avoid stray characters
+                for (var lane = 0; lane < Math.Min(expectedRowLength, row.Length); lane++)
                 {
                     var cell = row[lane];
                     var noteType = cell switch
