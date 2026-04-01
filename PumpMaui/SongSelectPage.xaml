@@ -8,12 +8,20 @@
 
     <Grid x:Name="MainGrid">
         <!-- Portrait Layout -->
-        <Grid x:Name="PortraitLayout" 
+        <!-- Row 0: Header
+             Row 1: Load buttons
+             Row 2: Loading progress
+             Row 3: Settings
+             Row 4: Search bar  ← always visible
+             Row 5: Series selector / Song list / Search results (mutually exclusive)
+             Row 6: Back button
+             Row 7: Selection panel -->
+        <Grid x:Name="PortraitLayout"
               IsVisible="True"
-              Padding="{OnPlatform Default=16, iOS=8, Android=8}" 
-              RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+              Padding="{OnPlatform Default=16, iOS=8, Android=8}"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto">
 
-            <!-- Header - Responsive sizing -->
+            <!-- Header -->
             <VerticalStackLayout Grid.Row="0" Spacing="1" Margin="0,0,0,4">
                 <Label Text="PUMP MAUI"
                        FontSize="{OnPlatform Default=24, iOS=20, Android=20}"
@@ -26,7 +34,7 @@
                        HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
 
-            <!-- Load buttons - Responsive layout -->
+            <!-- Load buttons -->
             <HorizontalStackLayout Grid.Row="1" Spacing="8" HorizontalOptions="Center" Margin="0,0,0,4">
                 <Button Text="External Folder"
                         Clicked="OnOpenFolderClicked"
@@ -36,29 +44,26 @@
                         WidthRequest="{OnPlatform Default=160, iOS=140, Android=140}"
                         HeightRequest="{OnPlatform Default=44, iOS=40, Android=40}"
                         FontSize="{OnPlatform Default=14, iOS=12, Android=12}" />
-
                 <Button x:Name="LoadRemoteButtonPortrait" Text="Load from URL" Clicked="OnLoadRemoteClicked" />
             </HorizontalStackLayout>
 
+            <!-- Loading progress -->
             <VerticalStackLayout Grid.Row="2" Spacing="4">
-
                 <Label x:Name="LoadingLabelPortrait"
                        Text=""
                        TextColor="#D0B7FF"
                        FontSize="12"
                        IsVisible="False"
                        HorizontalTextAlignment="Center"/>
-
                 <ProgressBar x:Name="LoadingProgressBarPortrait"
-                     Progress="0"
-                     IsVisible="False"
-                     HeightRequest="6"
-                     BackgroundColor="#2A1B4A"
-                     ProgressColor="#D94BFF"/>
-
+                             Progress="0"
+                             IsVisible="False"
+                             HeightRequest="6"
+                             BackgroundColor="#2A1B4A"
+                             ProgressColor="#D94BFF"/>
             </VerticalStackLayout>
 
-            <!-- Settings like scroll speed and skin -->
+            <!-- Settings -->
             <Border Grid.Row="3"
                     Background="#1A102A"
                     Stroke="#4C327C"
@@ -66,48 +71,39 @@
                     Padding="{OnPlatform Default=12, iOS=8, Android=8}"
                     Margin="0,0,0,8"
                     StrokeShape="RoundRectangle 8">
-
-                <Grid RowDefinitions="Auto, Auto">
-
+                <Grid RowDefinitions="Auto,Auto">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-
                         <Label Grid.Column="0"
-                        Text="Scroll Speed"
-                        FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
-                        FontAttributes="Bold"
-                        TextColor="#FCE3FF"
-                        VerticalTextAlignment="Center" />
-                                    <Slider Grid.Column="1"
-                            x:Name="ScrollSpeedSlider"
-                            Minimum="0.5"
-                            Maximum="4.0"
-                            Value="{Binding ScrollSpeed}"
-                            ValueChanged="OnScrollSpeedChanged"
-                            ThumbColor="#D94BFF"
-                            MinimumTrackColor="#A100FF"
-                            MaximumTrackColor="#4C327C" />
-                                    <Label Grid.Column="2"
-                        x:Name="ScrollSpeedLabel"
-                        Text="{Binding ScrollSpeedText}"
-                        FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
-                        FontAttributes="Bold"
-                        TextColor="#FFE76A"
-                        VerticalTextAlignment="Center"
-                        MinimumWidthRequest="40"
-                        HorizontalTextAlignment="Center" />
-
+                               Text="Scroll Speed"
+                               FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                               FontAttributes="Bold"
+                               TextColor="#FCE3FF"
+                               VerticalTextAlignment="Center" />
+                        <Slider Grid.Column="1"
+                                x:Name="ScrollSpeedSlider"
+                                Minimum="0.5"
+                                Maximum="4.0"
+                                Value="{Binding ScrollSpeed}"
+                                ValueChanged="OnScrollSpeedChanged"
+                                ThumbColor="#D94BFF"
+                                MinimumTrackColor="#A100FF"
+                                MaximumTrackColor="#4C327C" />
+                        <Label Grid.Column="2"
+                               x:Name="ScrollSpeedLabel"
+                               Text="{Binding ScrollSpeedText}"
+                               FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                               FontAttributes="Bold"
+                               TextColor="#FFE76A"
+                               VerticalTextAlignment="Center"
+                               MinimumWidthRequest="40"
+                               HorizontalTextAlignment="Center" />
                     </Grid>
-
-
-                    <Grid Grid.Row="1" ColumnDefinitions="Auto, Auto" ColumnSpacing="12">
-                        <!-- Note Skin Selector - Portrait -->
-                        <Label
-                            Text="Note Skin"
-                            FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
-                            FontAttributes="Bold"
-                            TextColor="#FCE3FF"
-                            VerticalTextAlignment="Center" />
-                        
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12">
+                        <Label Text="Note Skin"
+                               FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                               FontAttributes="Bold"
+                               TextColor="#FCE3FF"
+                               VerticalTextAlignment="Center" />
                         <Picker Grid.Column="1"
                                 x:Name="NoteSkinPicker"
                                 SelectedItem="{Binding NoteSkin}"
@@ -123,66 +119,70 @@
                                 <x:String>NXA</x:String>
                             </Picker.Items>
                         </Picker>
-                        
+                        <Label Grid.Column="2"
+                               Text="Timing"
+                               FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                               FontAttributes="Bold"
+                               TextColor="#FCE3FF"
+                               VerticalTextAlignment="Center" />
+                        <Picker Grid.Column="3"
+                                SelectedItem="{Binding JudgmentDifficultyString}"
+                                TextColor="#FFF4FF"
+                                TitleColor="#8C76B5"
+                                FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                                HeightRequest="{OnPlatform Default=40, iOS=35, Android=35}"
+                                WidthRequest="90">
+                            <Picker.Items>
+                                <x:String>Easy</x:String>
+                                <x:String>Hard</x:String>
+                            </Picker.Items>
+                        </Picker>
                     </Grid>
-
                 </Grid>
-               
             </Border>
 
-            <!-- Game Series Selector -->
-            <CollectionView Grid.Row="4"
-                x:Name="PortraitSeriesCollectionView"
-                ItemsSource="{Binding GameSeriesList}"
-                SelectionMode="Single"
-                SelectionChanged="OnSeriesSelected"   
-                IsVisible="{Binding IsSeriesSelectionVisible}">
+            <!-- Search bar — ALWAYS visible -->
+            <Border Grid.Row="4"
+                    Background="#1A102A"
+                    Stroke="#4C327C"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 8"
+                    Padding="8,2"
+                    Margin="0,0,0,6">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
+                    <Label Grid.Column="0"
+                           Text="🔍"
+                           FontSize="16"
+                           TextColor="#8C76B5"
+                           VerticalTextAlignment="Center" />
+                    <Entry Grid.Column="1"
+                           x:Name="PortraitSearchEntry"
+                           Placeholder="Search all songs…"
+                           Text="{Binding SearchText}"
+                           TextChanged="OnSearchTextChanged"
+                           PlaceholderColor="#8C76B5"
+                           TextColor="#FFF4FF"
+                           BackgroundColor="Transparent"
+                           ClearButtonVisibility="WhileEditing" />
+                    <Label Grid.Column="2"
+                           Text="{Binding SearchResults.Count, StringFormat='{0} results'}"
+                           FontSize="11"
+                           TextColor="#8C76B5"
+                           VerticalTextAlignment="Center"
+                           IsVisible="{Binding IsSearchActive}" />
+                </Grid>
+            </Border>
 
-                <CollectionView.ItemsLayout>
-                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-
-                <CollectionView.ItemTemplate>
-                    <DataTemplate>
-                        <Border Stroke="#4C327C"
-                                StrokeThickness="1"
-                                Background="#1A102A"
-                                StrokeShape="RoundRectangle 16"
-                                Padding="0"
-                                WidthRequest="180"
-                                HeightRequest="120">
-
-                            <Grid>
-                                <!-- Banner -->
-                                <Image Source="{Binding Banner}" Aspect="AspectFill" />
-
-                                <!-- Overlay -->
-                                <BoxView BackgroundColor="#000000" Opacity="0.4"/>
-
-                                <!-- Title -->
-                                <Label Text="{Binding Name}"
-                           TextColor="White"
-                           FontSize="18"
-                           FontAttributes="Bold"
-                           HorizontalOptions="Center"
-                           VerticalOptions="End"
-                           Margin="0,0,0,10"/>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
-
-            <!-- Song list - Vertical -->
-            <CollectionView Grid.Row="4"
-                            x:Name="SongListView"
-                            ItemsSource="{Binding SongList}"
+            <!-- Search results — shown when IsSearchActive, hidden otherwise -->
+            <CollectionView Grid.Row="5"
+                            x:Name="PortraitSearchResultsView"
+                            ItemsSource="{Binding SearchResults}"
                             SelectionMode="Single"
                             SelectionChanged="OnSongSelected"
                             ItemsLayout="VerticalList"
-                            IsVisible="{Binding IsSongListVisible}">
+                            IsVisible="{Binding IsSearchActive}">
                 <CollectionView.EmptyView>
-                    <Label Text="Loading song collection..."
+                    <Label Text="No songs match your search."
                            TextColor="#8C76B5"
                            FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
                            HorizontalTextAlignment="Center"
@@ -197,21 +197,16 @@
                                 StrokeThickness="1"
                                 Background="#1A102A"
                                 StrokeShape="RoundRectangle 6">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto"
-                                  RowSpacing="1">
-                                <!-- Background Image -->
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="1">
                                 <Image Grid.RowSpan="3" Grid.ColumnSpan="2"
                                        Source="{Binding BackgroundImageSource}"
                                        Aspect="AspectFill"
                                        Opacity="0.2"
                                        HorizontalOptions="FillAndExpand"
                                        VerticalOptions="FillAndExpand" />
-                                
-                                <!-- Semi-transparent overlay for better text readability -->
                                 <BoxView Grid.RowSpan="3" Grid.ColumnSpan="2"
                                          BackgroundColor="#1A102A"
-                                         Opacity="0.7" />
-                                
+                                         Opacity="0.2" />
                                 <Label Grid.Row="0" Grid.Column="0"
                                        Text="{Binding Title}"
                                        FontAttributes="Bold"
@@ -244,8 +239,108 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
 
+            <!-- Series selector — hidden while searching -->
+            <CollectionView Grid.Row="5"
+                            x:Name="PortraitSeriesCollectionView"
+                            ItemsSource="{Binding GameSeriesList}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnSeriesSelected"
+                            IsVisible="{Binding IsSeriesViewVisible}">
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="10"/>
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Stroke="#4C327C"
+                                StrokeThickness="1"
+                                Background="#1A102A"
+                                StrokeShape="RoundRectangle 16"
+                                Padding="0"
+                                WidthRequest="180"
+                                HeightRequest="120">
+                            <Grid>
+                                <Image Source="{Binding Banner}" Aspect="AspectFill" />
+                                <BoxView BackgroundColor="#000000" Opacity="0.4"/>
+                                <Label Text="{Binding Name}"
+                                       TextColor="White"
+                                       FontSize="18"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="End"
+                                       Margin="0,0,0,10"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
 
-            <Button Grid.Row="5"
+            <!-- Song list (inside a series) — hidden while searching -->
+            <CollectionView Grid.Row="5"
+                            x:Name="SongListView"
+                            ItemsSource="{Binding SongList}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnSongSelected"
+                            ItemsLayout="VerticalList"
+                            IsVisible="{Binding IsSongListVisible}">
+                <CollectionView.EmptyView>
+                    <Label Text="Loading song collection..."
+                           TextColor="#8C76B5"
+                           FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                           HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center"
+                           Margin="0,40" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,1,0,1"
+                                Padding="6,4,6,4"
+                                Stroke="#4C327C"
+                                StrokeThickness="1"
+                                Background="#1A102A"
+                                StrokeShape="RoundRectangle 6">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="1">
+                                <Image Grid.RowSpan="3" Grid.ColumnSpan="2"
+                                       Source="{Binding BackgroundImageSource}"
+                                       Aspect="AspectFill"
+                                       Opacity="0.2"
+                                       HorizontalOptions="FillAndExpand"
+                                       VerticalOptions="FillAndExpand" />
+                                <BoxView Grid.RowSpan="3" Grid.ColumnSpan="2"
+                                         BackgroundColor="#1A102A"
+                                         Opacity="0.2" />
+                                <Label Grid.Row="0" Grid.Column="0"
+                                       Text="{Binding Title}"
+                                       FontAttributes="Bold"
+                                       FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
+                                       TextColor="#FFF4FF"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
+                                <Label Grid.Row="1" Grid.Column="0"
+                                       Text="{Binding Artist}"
+                                       FontSize="{OnPlatform Default=11, iOS=9, Android=9}"
+                                       TextColor="#D0B7FF"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
+                                <Label Grid.Row="2" Grid.Column="0"
+                                       Text="{Binding ChartSummary}"
+                                       FontSize="{OnPlatform Default=10, iOS=8, Android=8}"
+                                       TextColor="#FFE76A"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
+                                <Label Grid.Row="0" Grid.Column="1"
+                                       Grid.RowSpan="3"
+                                       Text="▶"
+                                       FontSize="{OnPlatform Default=16, iOS=14, Android=14}"
+                                       TextColor="#D94BFF"
+                                       VerticalTextAlignment="Center"
+                                       Margin="6,0,0,0" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Button Grid.Row="6"
                     Text="← Back to Series"
                     Clicked="OnBackToSeriesClicked"
                     BackgroundColor="#5D42E6"
@@ -253,8 +348,8 @@
                     CornerRadius="10"
                     IsVisible="{Binding IsSongListVisible}" />
 
-            <!-- Selected song / chart panel - Portrait -->
-            <Border Grid.Row="6"
+            <!-- Selected song / chart panel -->
+            <Border Grid.Row="7"
                     Background="#140A29"
                     Stroke="#3E2B72"
                     StrokeThickness="2"
@@ -262,8 +357,6 @@
                     Margin="0,8,0,0"
                     IsVisible="{Binding HasSelection}">
                 <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
-                    
-                    <!-- Song Info -->
                     <VerticalStackLayout Grid.Column="0" Grid.Row="0" Spacing="2">
                         <Label x:Name="SelectedTitleLabel"
                                FontSize="{OnPlatform Default=18, iOS=16, Android=16}"
@@ -273,10 +366,8 @@
                                FontSize="{OnPlatform Default=13, iOS=11, Android=11}"
                                TextColor="#D0B7FF" />
                     </VerticalStackLayout>
-
-                    <!-- Chart Picker -->
                     <VerticalStackLayout Grid.Column="0" Grid.Row="1" Spacing="4">
-                        <Label Text="Chart" FontAttributes="Bold" TextColor="#FCE3FF" 
+                        <Label Text="Chart" FontAttributes="Bold" TextColor="#FCE3FF"
                                FontSize="{OnPlatform Default=12, iOS=10, Android=10}" />
                         <Picker x:Name="ChartPicker"
                                 Title="Select chart"
@@ -286,9 +377,7 @@
                                 FontSize="{OnPlatform Default=14, iOS=12, Android=12}"
                                 HeightRequest="{OnPlatform Default=40, iOS=35, Android=35}" />
                     </VerticalStackLayout>
-
-                    <!-- Selected Chart Display -->
-                    <Border Grid.Column="0" Grid.Row="2" 
+                    <Border Grid.Column="0" Grid.Row="2"
                             Grid.ColumnSpan="3"
                             Background="#2A1B4A"
                             Stroke="#D94BFF"
@@ -309,7 +398,6 @@
                                        TextColor="White"
                                        HorizontalTextAlignment="Center" />
                             </Border>
-                            
                             <Label Grid.Column="1"
                                    x:Name="SelectedChartLevelLabel"
                                    Text="Level 12"
@@ -317,7 +405,6 @@
                                    FontAttributes="Bold"
                                    TextColor="#FFE76A"
                                    VerticalTextAlignment="Center" />
-                            
                             <Label Grid.Column="2"
                                    x:Name="SelectedChartNotesLabel"
                                    Text="456 notes"
@@ -326,10 +413,7 @@
                                    VerticalTextAlignment="Center" />
                         </Grid>
                     </Border>
-
-                    <!-- Close Button -->
-                    <Button Grid.Column="1"
-                            Grid.Row="0"
+                    <Button Grid.Column="1" Grid.Row="0"
                             x:Name="CloseButton"
                             Text="✕"
                             Clicked="OnCloseSelectionClicked"
@@ -342,10 +426,7 @@
                             HeightRequest="{OnPlatform Default=35, iOS=30, Android=30}"
                             VerticalOptions="Start"
                             Margin="0,0,8,0" />
-
-                    <!-- Play Button -->
-                    <Button Grid.Column="2"
-                            Grid.Row="0"
+                    <Button Grid.Column="2" Grid.Row="0"
                             Grid.RowSpan="2"
                             x:Name="PlayButton"
                             Text="PLAY"
@@ -364,14 +445,14 @@
 
         <!-- Landscape Layout -->
         <!-- Row 0: Header
-             Row 1: Loading progress bar
-             Row 2: Settings bar (buttons, speed, skin)
-             Row 3: Selection panel — only visible when a song is selected (no overlap)
-             Row 4: Song/series list -->
+             Row 1: Loading progress
+             Row 2: Settings bar (includes inline search)
+             Row 3: Selection panel
+             Row 4: Series selector / Song list / Search results -->
         <Grid x:Name="LandscapeLayout" IsVisible="False" Padding="16,8"
               RowDefinitions="Auto,Auto,Auto,Auto,*">
 
-            <!-- Header - Compact for landscape -->
+            <!-- Header -->
             <VerticalStackLayout Grid.Row="0" Spacing="1" Margin="0,0,0,4">
                 <Label Text="PUMP MAUI"
                        FontSize="20"
@@ -400,13 +481,11 @@
                              ProgressColor="#D94BFF"/>
             </VerticalStackLayout>
 
-            <!-- Settings bar: navigation, load buttons, scroll speed, note skin -->
+            <!-- Settings bar: navigation, load, speed, skin, timing, search -->
             <Grid Grid.Row="2"
-                  ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"
+                  ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="8"
                   Margin="0,0,0,6">
-
-                <!-- Back to Series -->
                 <Button Grid.Column="0"
                         Text="← Series"
                         Clicked="OnBackToSeriesClicked"
@@ -417,8 +496,6 @@
                         WidthRequest="90"
                         HeightRequest="35"
                         FontSize="12" />
-
-                <!-- External Folder -->
                 <Button Grid.Column="1"
                         Text="📁 Folder"
                         Clicked="OnOpenFolderClicked"
@@ -428,8 +505,6 @@
                         WidthRequest="90"
                         HeightRequest="35"
                         FontSize="12" />
-
-                <!-- Load from URL -->
                 <Button Grid.Column="2"
                         x:Name="LoadRemoteButtonLandscape"
                         Text="Load URL"
@@ -438,8 +513,6 @@
                         HeightRequest="35"
                         FontSize="12"
                         WidthRequest="90" />
-
-                <!-- Scroll Speed (fills remaining space) -->
                 <Border Grid.Column="3"
                         Background="#1A102A"
                         Stroke="#4C327C"
@@ -473,16 +546,12 @@
                                HorizontalTextAlignment="Center" />
                     </Grid>
                 </Border>
-
-                <!-- Note Skin label -->
                 <Label Grid.Column="4"
                        Text="Skin"
                        FontSize="12"
                        FontAttributes="Bold"
                        TextColor="#FCE3FF"
                        VerticalTextAlignment="Center" />
-
-                <!-- Note Skin Picker -->
                 <Picker Grid.Column="5"
                         x:Name="NoteSkinPickerLandscape"
                         SelectedItem="{Binding NoteSkin}"
@@ -498,9 +567,53 @@
                         <x:String>NXA</x:String>
                     </Picker.Items>
                 </Picker>
+                <Label Grid.Column="6"
+                       Text="Timing"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#FCE3FF"
+                       VerticalTextAlignment="Center" />
+                <Picker Grid.Column="7"
+                        SelectedItem="{Binding JudgmentDifficultyString}"
+                        TextColor="#FFF4FF"
+                        TitleColor="#8C76B5"
+                        FontSize="12"
+                        HeightRequest="35"
+                        WidthRequest="90">
+                    <Picker.Items>
+                        <x:String>Easy</x:String>
+                        <x:String>Hard</x:String>
+                    </Picker.Items>
+                </Picker>
+                <!-- Search — inline in settings bar, ALWAYS visible -->
+                <Border Grid.Column="8"
+                        Background="#1A102A"
+                        Stroke="#4C327C"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 8"
+                        Padding="6,2"
+                        WidthRequest="200">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
+                        <Label Grid.Column="0"
+                               Text="🔍"
+                               FontSize="14"
+                               TextColor="#8C76B5"
+                               VerticalTextAlignment="Center" />
+                        <Entry Grid.Column="1"
+                               x:Name="LandscapeSearchEntry"
+                               Placeholder="Search all songs…"
+                               Text="{Binding SearchText}"
+                               TextChanged="OnSearchTextChanged"
+                               PlaceholderColor="#8C76B5"
+                               TextColor="#FFF4FF"
+                               BackgroundColor="Transparent"
+                               FontSize="12"
+                               ClearButtonVisibility="WhileEditing" />
+                    </Grid>
+                </Border>
             </Grid>
 
-            <!-- Selected song panel — sits in its own row, never overlaps settings -->
+            <!-- Selected song panel -->
             <Border Grid.Row="3"
                     Background="#140A29"
                     Stroke="#3E2B72"
@@ -512,8 +625,6 @@
                 <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto"
                       ColumnSpacing="10"
                       VerticalOptions="Center">
-
-                    <!-- Song title + artist -->
                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
                         <Label x:Name="LandscapeSelectedTitleLabel"
                                FontSize="13"
@@ -527,16 +638,12 @@
                                LineBreakMode="TailTruncation"
                                MaxLines="1" />
                     </VerticalStackLayout>
-
-                    <!-- Chart label -->
                     <Label Grid.Column="1"
                            Text="Chart:"
                            FontSize="11"
                            FontAttributes="Bold"
                            TextColor="#FCE3FF"
                            VerticalTextAlignment="Center" />
-
-                    <!-- Chart picker -->
                     <Picker Grid.Column="2"
                             x:Name="LandscapeChartPicker"
                             SelectedIndexChanged="OnChartChanged"
@@ -545,8 +652,6 @@
                             WidthRequest="90"
                             HeightRequest="35"
                             VerticalOptions="Center" />
-
-                    <!-- Close button -->
                     <Button Grid.Column="3"
                             Text="✕"
                             Clicked="OnCloseSelectionClicked"
@@ -558,8 +663,6 @@
                             WidthRequest="35"
                             HeightRequest="35"
                             VerticalOptions="Center" />
-
-                    <!-- Play button -->
                     <Button Grid.Column="4"
                             x:Name="LandscapePlayButton"
                             Text="PLAY"
@@ -575,18 +678,83 @@
                 </Grid>
             </Border>
 
-            <!-- Game Series Selector - Landscape -->
+            <!-- Search results — landscape, shown when IsSearchActive -->
+            <CollectionView Grid.Row="4"
+                            x:Name="LandscapeSearchResultsView"
+                            ItemsSource="{Binding SearchResults}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnSongSelected"
+                            ItemsLayout="HorizontalList"
+                            IsVisible="{Binding IsSearchActive}">
+                <CollectionView.EmptyView>
+                    <Label Text="No songs match your search."
+                           TextColor="#8C76B5"
+                           FontSize="12"
+                           HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,6,0"
+                                Padding="8"
+                                Stroke="#4C327C"
+                                StrokeThickness="1"
+                                Background="#1A102A"
+                                StrokeShape="RoundRectangle 8"
+                                WidthRequest="200"
+                                HeightRequest="90">
+                            <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="2">
+                                <Image Grid.RowSpan="4"
+                                       Source="{Binding BackgroundImageSource}"
+                                       Aspect="AspectFill"
+                                       Opacity="0.25"
+                                       HorizontalOptions="FillAndExpand"
+                                       VerticalOptions="FillAndExpand" />
+                                <BoxView Grid.RowSpan="4"
+                                         BackgroundColor="#1A102A"
+                                         Opacity="0.2" />
+                                <Label Grid.Row="0"
+                                       Text="{Binding Title}"
+                                       FontAttributes="Bold"
+                                       FontSize="12"
+                                       TextColor="#FFF4FF"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
+                                <Label Grid.Row="1"
+                                       Text="{Binding Artist}"
+                                       FontSize="10"
+                                       TextColor="#D0B7FF"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
+                                <Label Grid.Row="2"
+                                       Text="{Binding ChartSummary}"
+                                       FontSize="9"
+                                       TextColor="#FFE76A"
+                                       VerticalOptions="Center"
+                                       HorizontalTextAlignment="Center" />
+                                <Label Grid.Row="3"
+                                       Text="▶ SELECT"
+                                       FontSize="10"
+                                       FontAttributes="Bold"
+                                       TextColor="#D94BFF"
+                                       HorizontalTextAlignment="Center"
+                                       VerticalOptions="End" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Series selector — landscape, hidden while searching -->
             <CollectionView Grid.Row="4"
                             x:Name="LandscapeSeriesCollectionView"
                             ItemsSource="{Binding GameSeriesList}"
                             SelectionMode="Single"
                             SelectionChanged="OnSeriesSelected"
-                            IsVisible="{Binding IsSeriesSelectionVisible}">
-
+                            IsVisible="{Binding IsSeriesViewVisible}">
                 <CollectionView.ItemsLayout>
                     <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12"/>
                 </CollectionView.ItemsLayout>
-
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Border Stroke="#4C327C"
@@ -614,7 +782,7 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
 
-            <!-- Song list - Full width horizontal -->
+            <!-- Song list — landscape, hidden while searching -->
             <CollectionView Grid.Row="4"
                             x:Name="LandscapeSongListView"
                             ItemsSource="{Binding SongList}"
@@ -640,17 +808,15 @@
                                 WidthRequest="200"
                                 HeightRequest="90">
                             <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="2">
-                                <!-- Background Image -->
                                 <Image Grid.RowSpan="4"
                                        Source="{Binding BackgroundImageSource}"
                                        Aspect="AspectFill"
                                        Opacity="0.25"
                                        HorizontalOptions="FillAndExpand"
                                        VerticalOptions="FillAndExpand" />
-                                <!-- Semi-transparent overlay -->
                                 <BoxView Grid.RowSpan="4"
                                          BackgroundColor="#1A102A"
-                                         Opacity="0.6" />
+                                         Opacity="0.2" />
                                 <Label Grid.Row="0"
                                        Text="{Binding Title}"
                                        FontAttributes="Bold"

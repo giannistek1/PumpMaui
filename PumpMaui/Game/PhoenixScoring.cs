@@ -1,169 +1,213 @@
-namespace PumpMaui.Game;
+﻿namespace PumpMaui.Game;
+
+/// <summary>Selects between the two available timing-window presets.</summary>
+public enum JudgmentDifficulty
+{
+    Easy,
+    Hard
+}
 
 public static class PhoenixScoring
 {
-    public const double PerfectWindowSeconds = 0.045d;
-    public const double GreatWindowSeconds = 0.090d;
-    public const double GoodWindowSeconds = 0.135d;
-    public const double BadWindowSeconds = 0.180d;
+    // -------------------------------------------------------------------------
+    // Timing windows
+    //
+    // delta = currentTime - noteTime
+    //   negative  →  player pressed EARLY
+    //   positive  →  player pressed LATE
+    //
+    // Easy:
+    //   Early: Perfect ≤ 83.3 ms | Great 83.3–124.9 | Good 124.9–166.5 | Bad 166.5–208.1 | Miss > 208.1
+    //   Late:  Perfect ≤ 124.9 ms | Great 124.9–166.5 | Good 166.5–208.1 | Bad 208.1–249.7 | Miss > 249.7
+    //
+    // Hard:
+    //   Early: Perfect ≤ 25.0 ms | Great 25.0–66.6 | Good 66.6–108.2 | Bad 108.2–149.8 | Miss > 149.8
+    //   Late:  Perfect ≤ 66.6 ms | Great 66.6–108.2 | Good 108.2–149.8 | Bad 149.8–191.4 | Miss > 191.4
+    // -------------------------------------------------------------------------
+
+    private readonly record struct TimingWindows(
+        double EarlyPerfect,
+        double EarlyGreat,
+        double EarlyGood,
+        double EarlyBad,
+        double LatePerfect,
+        double LateGreat,
+        double LateGood,
+        double LateBad);
+
+    private static readonly TimingWindows EasyWindows = new(
+        EarlyPerfect: 0.0833d,
+        EarlyGreat: 0.1249d,
+        EarlyGood: 0.1665d,
+        EarlyBad: 0.2081d,
+        LatePerfect: 0.1249d,
+        LateGreat: 0.1665d,
+        LateGood: 0.2081d,
+        LateBad: 0.2497d);
+
+    private static readonly TimingWindows HardWindows = new(
+        EarlyPerfect: 0.0250d,
+        EarlyGreat: 0.0666d,
+        EarlyGood: 0.1082d,
+        EarlyBad: 0.1498d,
+        LatePerfect: 0.0666d,
+        LateGreat: 0.1082d,
+        LateGood: 0.1498d,
+        LateBad: 0.1914d);
+
+    // -------------------------------------------------------------------------
+    // Score constants
+    //   Accuracy pool : 995,000 pts (99.5 %)
+    //   Combo pool    :   5,000 pts ( 0.5 %)
+    // -------------------------------------------------------------------------
+
     public const int MaxScore = 1_000_000;
+    public const int AccuracyMaxScore = 995_000;
+    public const int ComboMaxScore = 5_000;
 
-    public static HitJudgment GetJudgment(double deltaSeconds)
+    // -------------------------------------------------------------------------
+    // Judgment weights (accuracy pool)
+    //   Perfect = 100 %, Great = 60 %, Good = 20 %, Bad = 10 %, Miss = 0 %
+    // -------------------------------------------------------------------------
+
+    public static double GetWeight(HitJudgment judgment) => judgment switch
     {
-        var absoluteDelta = Math.Abs(deltaSeconds);
-        if (absoluteDelta <= PerfectWindowSeconds)
-        {
-            return HitJudgment.Perfect;
-        }
+        HitJudgment.Perfect => 1.00d,
+        HitJudgment.Great => 0.60d,
+        HitJudgment.Good => 0.20d,
+        HitJudgment.Bad => 0.10d,
+        _ => 0.00d
+    };
 
-        if (absoluteDelta <= GreatWindowSeconds)
-        {
-            return HitJudgment.Great;
-        }
+    // -------------------------------------------------------------------------
+    // Outer late boundary — used by the engine's auto-miss pass.
+    // Returns the LateBad value for the selected difficulty.
+    // -------------------------------------------------------------------------
 
-        if (absoluteDelta <= GoodWindowSeconds)
-        {
-            return HitJudgment.Good;
-        }
+    public static double GetBadWindow(JudgmentDifficulty difficulty)
+        => difficulty == JudgmentDifficulty.Hard
+            ? HardWindows.LateBad
+            : EasyWindows.LateBad;
 
-        if (absoluteDelta <= BadWindowSeconds)
-        {
-            return HitJudgment.Bad;
-        }
+    // -------------------------------------------------------------------------
+    // Asymmetric judgment evaluation
+    //   delta < 0  →  early press
+    //   delta ≥ 0  →  late press (delta = 0 is a perfect)
+    // -------------------------------------------------------------------------
 
-        return HitJudgment.Miss;
-    }
-
-    public static double GetWeight(HitJudgment judgment)
+    public static HitJudgment GetJudgment(double deltaSeconds,
+        JudgmentDifficulty difficulty = JudgmentDifficulty.Easy)
     {
-        return judgment switch
+        var w = difficulty == JudgmentDifficulty.Hard ? HardWindows : EasyWindows;
+
+        if (deltaSeconds <= 0)
         {
-            HitJudgment.Perfect => 1.00d,
-            HitJudgment.Great => 0.82d,
-            HitJudgment.Good => 0.55d,
-            HitJudgment.Bad => 0.20d,
-            _ => 0d
-        };
+            var early = -deltaSeconds;
+            if (early <= w.EarlyPerfect) return HitJudgment.Perfect;
+            if (early <= w.EarlyGreat) return HitJudgment.Great;
+            if (early <= w.EarlyGood) return HitJudgment.Good;
+            if (early <= w.EarlyBad) return HitJudgment.Bad;
+            return HitJudgment.Miss;
+        }
+        else
+        {
+            if (deltaSeconds <= w.LatePerfect) return HitJudgment.Perfect;
+            if (deltaSeconds <= w.LateGreat) return HitJudgment.Great;
+            if (deltaSeconds <= w.LateGood) return HitJudgment.Good;
+            if (deltaSeconds <= w.LateBad) return HitJudgment.Bad;
+            return HitJudgment.Miss;
+        }
     }
 
     public static bool BreaksCombo(HitJudgment judgment)
+        => judgment is HitJudgment.Bad or HitJudgment.Miss;
+
+    // -------------------------------------------------------------------------
+    // Score calculation
+    // -------------------------------------------------------------------------
+
+    public static int CalculateScore(
+        IReadOnlyDictionary<HitJudgment, int> counts,
+        int noteCount,
+        int maxCombo)
     {
-        return judgment is HitJudgment.Bad or HitJudgment.Miss;
+        if (noteCount <= 0) return 0;
+
+        var weightedSum = counts.Sum(pair => pair.Value * GetWeight(pair.Key));
+        var accuracyScore = weightedSum / noteCount * AccuracyMaxScore;
+        var comboScore = maxCombo >= noteCount ? ComboMaxScore : 0;
+
+        return Math.Min(MaxScore, (int)Math.Round(accuracyScore + comboScore, MidpointRounding.AwayFromZero));
     }
 
-    public static int CalculateScore(IReadOnlyDictionary<HitJudgment, int> counts, int noteCount)
-    {
-        if (noteCount <= 0)
-        {
-            return 0;
-        }
+    // -------------------------------------------------------------------------
+    // Grade thresholds
+    // -------------------------------------------------------------------------
 
-        var totalWeight = counts.Sum(pair => pair.Value * GetWeight(pair.Key));
-        return (int)Math.Round(totalWeight / noteCount * MaxScore, MidpointRounding.AwayFromZero);
-    }
-
-    public static string CalculateGrade(int score)
+    public static string CalculateGrade(int score) => score switch
     {
-        return score switch
-        {
-            >= 995000 => "SSS+",
-            >= 990000 => "SSS",
-            >= 985000 => "SS+",
-            >= 980000 => "SS",
-            >= 975000 => "S+",
-            >= 970000 => "S",
-            >= 960000 => "AAA+",
-            >= 950000 => "AAA",
-            >= 925000 => "AA+",
-            >= 900000 => "AA",
-            >= 825000 => "A+",
-            >= 750000 => "A",
-            >= 700000 => "B",
-            >= 600000 => "C",
-            >= 450000 => "D",
-            _ => "F"
-        };
-    }
+        >= 995_000 => "SSS+",
+        >= 990_000 => "SSS",
+        >= 985_000 => "SS+",
+        >= 980_000 => "SS",
+        >= 975_000 => "S+",
+        >= 970_000 => "S",
+        >= 960_000 => "AAA+",
+        >= 950_000 => "AAA",
+        >= 925_000 => "AA+",
+        >= 900_000 => "AA",
+        >= 825_000 => "A+",
+        >= 750_000 => "A",
+        >= 700_000 => "B",
+        >= 600_000 => "C",
+        >= 450_000 => "D",
+        _ => "F"
+    };
+
+    // -------------------------------------------------------------------------
+    // Plate
+    // -------------------------------------------------------------------------
 
     public static string CalculatePlate(IReadOnlyDictionary<HitJudgment, int> counts, int noteCount)
     {
-        var missCount = counts[HitJudgment.Miss];
-        var badCount = counts[HitJudgment.Bad];
-        var goodCount = counts[HitJudgment.Good];
-        var greatCount = counts[HitJudgment.Great];
         var perfectCount = counts[HitJudgment.Perfect];
+        var goodCount = counts[HitJudgment.Good];
+        var badCount = counts[HitJudgment.Bad];
+        var missCount = counts[HitJudgment.Miss];
 
-        // Perfect Game: ALL PERFECT
-        if (perfectCount == noteCount)
-        {
-            return "Perfect Game";
-        }
-
-        // Ultimate Game: GOOD+BAD+MISS=0
-        if (goodCount == 0 && badCount == 0 && missCount == 0)
-        {
-            return "Ultimate Game";
-        }
-
-        // Extreme Game: BAD+MISS=0
-        if (badCount == 0 && missCount == 0)
-        {
-            return "Extreme Game";
-        }
-
-        // SuperB Game: 0 misses
-        if (missCount == 0)
-        {
-            return "SuperB Game";
-        }
-
-        // Marvelous Game: 1 to 5 misses
-        if (missCount >= 1 && missCount <= 5)
-        {
-            return "Marvelous Game";
-        }
-
-        // Talented Game: 6 to 10 misses
-        if (missCount >= 6 && missCount <= 10)
-        {
-            return "Talented Game";
-        }
-
-        // Fair Game: 11 to 20 misses
-        if (missCount >= 11 && missCount <= 20)
-        {
-            return "Fair Game";
-        }
-
-        // Rough Game: 21 or more misses
+        if (perfectCount == noteCount) return "Perfect Game";
+        if (goodCount == 0 && badCount == 0 && missCount == 0) return "Ultimate Game";
+        if (badCount == 0 && missCount == 0) return "Extreme Game";
+        if (missCount == 0) return "SuperB Game";
+        if (missCount <= 5) return "Marvelous Game";
+        if (missCount <= 10) return "Talented Game";
+        if (missCount <= 20) return "Fair Game";
         return "Rough Game";
     }
 
-    public static Color GetGradeColor(string grade)
-    {
-        return grade switch
-        {
-            "SSS+" or "SSS" => Color.FromArgb("#87CEEB"), // Diamond (Sky Blue)
-            "SS+" or "SS" or "S+" or "S" => Color.FromArgb("#FFD700"), // Gold
-            "AAA+" or "AAA" => Color.FromArgb("#C0C0C0"), // Silver
-            "AA+" or "AA" or "A+" or "A" => Color.FromArgb("#CD7F32"), // Bronze
-            "B" => Color.FromArgb("#4169E1"), // Royal Blue
-            "C" => Color.FromArgb("#32CD32"), // Lime Green
-            "D" => Color.FromArgb("#9ACD32"), // Yellow Green
-            "F" => Color.FromArgb("#228B22"), // Forest Green
-            _ => Color.FromArgb("#FFFFFF") // White fallback
-        };
-    }
+    // -------------------------------------------------------------------------
+    // Colors
+    // -------------------------------------------------------------------------
 
-    public static Color GetPlateColor(string plate)
+    public static Color GetGradeColor(string grade) => grade switch
     {
-        return plate switch
-        {
-            "Perfect Game" or "Ultimate Game" => Color.FromArgb("#87CEEB"), // Diamond (Sky Blue)
-            "Extreme Game" or "SuperB Game" => Color.FromArgb("#FFD700"), // Gold
-            "Marvelous Game" or "Talented Game" => Color.FromArgb("#C0C0C0"), // Silver
-            "Fair Game" or "Rough Game" => Color.FromArgb("#CD7F32"), // Bronze
-            _ => Color.FromArgb("#FFFFFF") // White fallback
-        };
-    }
+        "SSS+" or "SSS" => Color.FromArgb("#87CEEB"),
+        "SS+" or "SS" or "S+" or "S" => Color.FromArgb("#FFD700"),
+        "AAA+" or "AAA" => Color.FromArgb("#C0C0C0"),
+        "AA+" or "AA" or "A+" or "A" => Color.FromArgb("#CD7F32"),
+        "B" => Color.FromArgb("#4169E1"),
+        "C" => Color.FromArgb("#32CD32"),
+        "D" => Color.FromArgb("#9ACD32"),
+        "F" => Color.FromArgb("#228B22"),
+        _ => Color.FromArgb("#FFFFFF")
+    };
+
+    public static Color GetPlateColor(string plate) => plate switch
+    {
+        "Perfect Game" or "Ultimate Game" => Color.FromArgb("#87CEEB"),
+        "Extreme Game" or "SuperB Game" => Color.FromArgb("#FFD700"),
+        "Marvelous Game" or "Talented Game" => Color.FromArgb("#C0C0C0"),
+        "Fair Game" or "Rough Game" => Color.FromArgb("#CD7F32"),
+        _ => Color.FromArgb("#FFFFFF")
+    };
 }

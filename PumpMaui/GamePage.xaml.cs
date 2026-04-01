@@ -123,6 +123,7 @@ public partial class GamePage : ContentPage
                 {
                     _landscapeNoteFieldDrawable.NoteSkin = gameStartData.NoteSkin;
                 }
+                _engine.JudgmentDifficulty = gameStartData.JudgmentDifficulty;
 
                 System.Diagnostics.Debug.WriteLine($"🎮 Loading game with scroll speed: {gameStartData.ScrollSpeed:F1}x and note skin: {gameStartData.NoteSkin}");
                 System.Diagnostics.Debug.WriteLine($"   Song: {_song.Title}");
@@ -282,32 +283,27 @@ public partial class GamePage : ContentPage
             ? _playbackTimer.Elapsed.TotalSeconds + _playbackStartOffsetSeconds
             : _engine.CurrentTimeSeconds;
 
-        // Apply notes display offset so engine sees slightly earlier time (delays visual notes)
         var engineTime = elapsedSeconds - _notesDisplayOffsetSeconds;
         if (engineTime < 0d) engineTime = 0d;
 
-        // Store previous state to detect changes
         var previousScore = _engine.Score;
         var previousCombo = _engine.Combo;
+        var previousMissCombo = _engine.MissCombo;
         var previousJudgment = _engine.LastJudgmentText;
         var previousTimeSeconds = _engine.CurrentTimeSeconds;
 
         _engine.Update(engineTime);
 
-        // Check if anything significant changed that requires HUD update
         var hudChanged = previousScore != _engine.Score ||
-                        previousCombo != _engine.Combo ||
-                        previousJudgment != _engine.LastJudgmentText;
+                         previousCombo != _engine.Combo ||
+                         previousMissCombo != _engine.MissCombo ||
+                         previousJudgment != _engine.LastJudgmentText;
 
-        // Check if time changed enough to warrant note field redraw (smooth 60 FPS)
-        var timeChanged = Math.Abs(_engine.CurrentTimeSeconds - previousTimeSeconds) > 0.008; // ~120 FPS threshold for very smooth scrolling
+        var timeChanged = Math.Abs(_engine.CurrentTimeSeconds - previousTimeSeconds) > 0.008;
 
         if (hudChanged)
-        {
             RefreshHud();
-        }
 
-        // Only invalidate note fields when necessary - either time progressed or there was a judgment
         if (timeChanged || hudChanged)
         {
             NoteFieldView.Invalidate();
@@ -318,13 +314,12 @@ public partial class GamePage : ContentPage
         {
             _playbackTimer.Stop();
 
-            // Navigate to results page with game results
             var resultsData = new GameResultsData
             {
                 SongTitle = _song?.Title ?? "Unknown Song",
                 SongArtist = _song?.Artist ?? "Unknown Artist",
                 ChartDifficulty = _chart?.Difficulty ?? "Unknown",
-                ChartStepType = _chart?.StepType ?? "", // Add StepType
+                ChartStepType = _chart?.StepType ?? "",
                 ChartMeter = _chart?.Meter ?? 0,
                 Score = _engine.Score,
                 Grade = _engine.Grade,
@@ -341,7 +336,8 @@ public partial class GamePage : ContentPage
             var resultsJson = System.Text.Json.JsonSerializer.Serialize(resultsData);
             var encodedResults = Uri.EscapeDataString(resultsJson);
 
-            Dispatcher.Dispatch(async () => await Shell.Current.GoToAsync($"ResultsPage?resultsData={encodedResults}"));
+            Dispatcher.Dispatch(async () =>
+                await Shell.Current.GoToAsync($"ResultsPage?resultsData={encodedResults}"));
         }
 
         return true;
@@ -632,14 +628,11 @@ public partial class GamePage : ContentPage
         var judgmentText = _engine.LastJudgmentText;
         var countsText = $"PERFECT {_engine.Counts[HitJudgment.Perfect]} • GREAT {_engine.Counts[HitJudgment.Great]} • GOOD {_engine.Counts[HitJudgment.Good]} • BAD {_engine.Counts[HitJudgment.Bad]} • MISS {_engine.Counts[HitJudgment.Miss]}";
 
-        // Update only portrait counts label (no header in portrait mode)
         PortraitCountsLabel.Text = countsText;
         LandscapeCountsLabel.Text = countsText;
 
-        // Hide startup messages like "GO" and "READY" from the center overlay
         var shouldShowJudgment = !IsStartupMessage(judgmentText);
 
-        // Update CENTER OVERLAY elements (judgment and combo in middle of screen)
         CenterJudgmentLabel.IsVisible = shouldShowJudgment;
         LandscapeCenterJudgmentLabel.IsVisible = shouldShowJudgment;
 
@@ -648,47 +641,47 @@ public partial class GamePage : ContentPage
             CenterJudgmentLabel.Text = judgmentText;
             LandscapeCenterJudgmentLabel.Text = judgmentText;
 
-            // Add color coding for different judgments with new color scheme
             var judgmentColor = judgmentText switch
             {
-                "PERFECT" => Color.FromArgb("#87CEEB"), // Sky blue (diamond color)
-                "GREAT" => Color.FromArgb("#00FF00"),   // Green
-                "GOOD" => Color.FromArgb("#FFFF00"),    // Yellow
-                "BAD" => Color.FromArgb("#8A2BE2"),     // Purple (Blue Violet)
-                "MISS" => Color.FromArgb("#FF0000"),    // Red
-                _ => Color.FromArgb("#FFE76A")          // Default yellow
+                "PERFECT" => Color.FromArgb("#87CEEB"),
+                "GREAT" => Color.FromArgb("#00FF00"),
+                "GOOD" => Color.FromArgb("#FFFF00"),
+                "BAD" => Color.FromArgb("#8A2BE2"),
+                "MISS" => Color.FromArgb("#FF0000"),
+                _ => Color.FromArgb("#FFE76A")
             };
 
             CenterJudgmentLabel.TextColor = judgmentColor;
             LandscapeCenterJudgmentLabel.TextColor = judgmentColor;
         }
 
-        // Show combo only when >= 4
-        var showCombo = _engine.Combo >= 4;
+        // Miss combo takes priority over good combo when >= 4
+        var showMissCombo = _engine.MissCombo >= 4;
+        var showGoodCombo = !showMissCombo && _engine.Combo >= 4;
+        var showCombo = showMissCombo || showGoodCombo;
 
-        // Portrait combo labels
+        var comboNumber = showMissCombo ? _engine.MissCombo : _engine.Combo;
+        var comboColor = showMissCombo ? Color.FromArgb("#FF0000") : Colors.White;
+
+        // Portrait
         CenterComboNumberLabel.IsVisible = showCombo;
         CenterComboTextLabel.IsVisible = showCombo;
 
-        // Landscape combo labels  
+        // Landscape
         LandscapeCenterComboNumberLabel.IsVisible = showCombo;
         LandscapeCenterComboTextLabel.IsVisible = showCombo;
 
         if (showCombo)
         {
-            // Set combo number (white color, bigger font)
-            CenterComboNumberLabel.Text = _engine.Combo.ToString();
-            CenterComboNumberLabel.TextColor = Colors.White; // White color
-
-            LandscapeCenterComboNumberLabel.Text = _engine.Combo.ToString();
-            LandscapeCenterComboNumberLabel.TextColor = Colors.White; // White color
-
-            // Set combo text (white color, smaller font)  
+            CenterComboNumberLabel.Text = comboNumber.ToString();
+            CenterComboNumberLabel.TextColor = comboColor;
             CenterComboTextLabel.Text = "COMBO";
-            CenterComboTextLabel.TextColor = Colors.White; // White color
+            CenterComboTextLabel.TextColor = comboColor;
 
+            LandscapeCenterComboNumberLabel.Text = comboNumber.ToString();
+            LandscapeCenterComboNumberLabel.TextColor = comboColor;
             LandscapeCenterComboTextLabel.Text = "COMBO";
-            LandscapeCenterComboTextLabel.TextColor = Colors.White; // White color
+            LandscapeCenterComboTextLabel.TextColor = comboColor;
         }
     }
 
@@ -833,14 +826,15 @@ public partial class GamePage : ContentPage
     {
         var previousScore = _engine.Score;
         var previousCombo = _engine.Combo;
+        var previousMissCombo = _engine.MissCombo;
         var previousJudgment = _engine.LastJudgmentText;
 
         _engine.HandleLaneHit(lane);
 
-        // Only update HUD and invalidate if something actually changed
         var somethingChanged = previousScore != _engine.Score ||
-                              previousCombo != _engine.Combo ||
-                              previousJudgment != _engine.LastJudgmentText;
+                               previousCombo != _engine.Combo ||
+                               previousMissCombo != _engine.MissCombo ||
+                               previousJudgment != _engine.LastJudgmentText;
 
         if (somethingChanged)
         {
@@ -849,7 +843,6 @@ public partial class GamePage : ContentPage
             LandscapeNoteFieldView?.Invalidate();
         }
 
-        // Maintain focus on key catcher
         FocusKeyCatcher();
     }
 
@@ -1004,6 +997,7 @@ public partial class GamePage : ContentPage
         public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
         public string NoteSkin { get; set; } = "Prime";
         public string? RemoteAudioUrl { get; set; }
+        public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Easy;
     }
 
     private sealed class GameResultsData

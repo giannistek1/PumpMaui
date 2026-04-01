@@ -10,6 +10,11 @@ public sealed class SscSong
     public string PreviewVideoPath { get; init; } = string.Empty;
     public double OffsetSeconds { get; init; }
     public IReadOnlyList<BpmChange> BpmChanges { get; init; } = [];
+    /// <summary>
+    /// Parsed from #TICKCOUNTS. Each entry defines how many ticks-per-beat apply
+    /// starting at a given beat position. Defaults to 4 ticks/beat if absent.
+    /// </summary>
+    public IReadOnlyList<TickCount> TickCounts { get; init; } = [];
     public IReadOnlyList<SscChart> Charts { get; init; } = [];
     public string? SourcePath { get; init; }
     public string BaseUrl { get; set; } = string.Empty;
@@ -44,7 +49,7 @@ public enum NoteType
     Tap = 1,
     HoldStart = 2,
     HoldEnd = 3,
-    HoldBody = 4 // Optional for long holds
+    HoldBody = 4
 }
 
 public sealed class ChartNote
@@ -54,7 +59,6 @@ public sealed class ChartNote
     public required double TimeSeconds { get; init; }
     public required NoteType Type { get; init; }
 
-    // Convenience properties
     public bool IsHoldHead => Type == NoteType.HoldStart;
     public bool IsHoldTail => Type == NoteType.HoldEnd;
     public bool IsHoldBody => Type == NoteType.HoldBody;
@@ -63,6 +67,12 @@ public sealed class ChartNote
 }
 
 public readonly record struct BpmChange(double Beat, double Bpm);
+
+/// <summary>
+/// A single segment of the #TICKCOUNTS map: from <see cref="Beat"/> onward,
+/// <see cref="TicksPerBeat"/> ticks are generated per beat inside holds.
+/// </summary>
+public readonly record struct TickCount(double Beat, int TicksPerBeat);
 
 public enum HitJudgment
 {
@@ -82,13 +92,24 @@ public sealed class PlayableNote
     public bool Consumed { get; set; }
     public bool Missed { get; set; }
 
-    // Hold note tracking
-    public PlayableNote? HoldPartner { get; set; } // For linking hold start/end
-    public bool IsHoldActive { get; set; } // For tracking active holds
+    public PlayableNote? HoldPartner { get; set; }
+    public bool IsHoldActive { get; set; }
 
-    // Convenience properties
     public bool IsHoldHead => Type == NoteType.HoldStart;
     public bool IsHoldTail => Type == NoteType.HoldEnd;
     public bool IsHold => Type == NoteType.HoldStart || Type == NoteType.HoldEnd || Type == NoteType.HoldBody;
     public bool IsTap => Type == NoteType.Tap;
+}
+
+/// <summary>
+/// A dynamically generated tick event that lives inside a hold note.
+/// One tick fires every (60 / bpm) / ticksPerBeat seconds.
+/// Perfect if the lane is held at fire time; Miss otherwise.
+/// A missed tick does NOT end the hold — the player can re-press for the next one.
+/// </summary>
+public sealed class HoldTick
+{
+    public required int Lane { get; init; }
+    public required double TimeSeconds { get; init; }
+    public bool Scored { get; set; }
 }

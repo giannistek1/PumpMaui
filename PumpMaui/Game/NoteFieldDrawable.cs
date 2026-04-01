@@ -429,7 +429,8 @@ public sealed class NoteFieldDrawable : IDrawable
 
                 // Skip if this hold is completely finished or not relevant
                 if (!isActiveHold && !isUpcomingHold) continue;
-                if (endDelta < -PhoenixScoring.BadWindowSeconds) continue;
+                // Skip holds that have fully passed (use the widest possible bad window for culling)
+                if (endDelta < -PhoenixScoring.GetBadWindow(JudgmentDifficulty.Easy)) continue;
 
                 // Calculate actual scroll window based on multiplier (inverted relationship) - extended for landscape
                 var actualScrollWindow = IsLandscapeMode ?
@@ -772,7 +773,7 @@ public sealed class NoteFieldDrawable : IDrawable
                 var deltaSeconds = note.TimeSeconds - _engine.CurrentTimeSeconds;
 
                 // Fixed: Use actualScrollWindow for the visibility check
-                if (deltaSeconds < -PhoenixScoring.BadWindowSeconds || deltaSeconds > actualScrollWindow)
+                if (deltaSeconds < -PhoenixScoring.GetBadWindow(_engine.JudgmentDifficulty) || deltaSeconds > actualScrollWindow)
                     continue;
 
                 var normalized = (float)(deltaSeconds / actualScrollWindow);

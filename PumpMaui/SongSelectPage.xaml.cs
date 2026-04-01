@@ -16,9 +16,16 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     private List<SscChart> _currentSortedCharts = [];
 
     public ObservableCollection<SongListItem> SongList { get; } = [];
+    public ObservableCollection<SongListItem> SearchResults { get; } = [];
     public ObservableCollection<GameSeriesItem> GameSeriesList { get; } = [];
 
     private Dictionary<string, List<SscSong>> _songsBySeries = [];
+
+    // Full unfiltered list for the currently selected series
+    private List<SongListItem> _allSongsInSeries = [];
+
+    // Flat list of every song across all series, used for global search
+    private readonly List<SongListItem> _allSongsGlobal = [];
 
     private bool _hasSelection;
     public bool HasSelection
@@ -58,10 +65,46 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             _isSeriesSelectionVisible = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsSongListVisible));
+            OnPropertyChanged(nameof(IsSeriesViewVisible));
         }
     }
 
     public bool IsSongListVisible => !IsSeriesSelectionVisible;
+
+    // True only when the series grid should actually be shown:
+    // user must be on the series screen AND not actively searching
+    public bool IsSeriesViewVisible => _isSeriesSelectionVisible && !IsSearchActive;
+
+    private string _searchText = string.Empty;
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText == value) return;
+            _searchText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsSearchActive));
+            OnPropertyChanged(nameof(IsSeriesViewVisible));
+            ApplyGlobalSearchFilter();
+        }
+    }
+
+    // True whenever the user has typed something — drives visibility in XAML
+    public bool IsSearchActive => !string.IsNullOrWhiteSpace(_searchText);
+
+    private JudgmentDifficulty _judgmentDifficulty = JudgmentDifficulty.Easy;
+    public string JudgmentDifficultyString
+    {
+        get => _judgmentDifficulty.ToString();
+        set
+        {
+            var parsed = Enum.TryParse<JudgmentDifficulty>(value, out var result) ? result : JudgmentDifficulty.Easy;
+            if (_judgmentDifficulty == parsed) return;
+            _judgmentDifficulty = parsed;
+            OnPropertyChanged();
+        }
+    }
 
     public SongSelectPage()
     {
@@ -125,7 +168,7 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        if (SongList.Count == 0)
+        if (SongList.Count == 0 && _allSongsGlobal.Count == 0)
             _ = LoadEmbeddedSongsAsync();
     }
 
@@ -158,8 +201,8 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
                 }
             }
 
-            if (loadedCount == 0)
-                await DisplayAlert("No Songs", "No embedded songs could be loaded.", "OK");
+            //if (loadedCount == 0)
+            //    await DisplayAlert("No Songs", "No embedded songs could be loaded.", "OK");
         }
         catch (Exception ex)
         {
@@ -267,22 +310,15 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
                 if (song.Charts.Count == 0) continue;
 
-                if (!_songsBySeries.ContainsKey(result.SeriesName))
+                ImageSource? bannerOverride = null;
+                if (!string.IsNullOrEmpty(result.BannerUri))
                 {
-                    _songsBySeries[result.SeriesName] = [];
-
-                    ImageSource? bannerImage = null;
-                    if (!string.IsNullOrEmpty(result.BannerUri))
-                    {
-                        var capturedUri = result.BannerUri;
-                        bannerImage = ImageSource.FromStream(
-                            () => PumpMaui.Platforms.Android.AndroidSafScanner.OpenRead(context, capturedUri));
-                    }
-
-                    GameSeriesList.Add(new GameSeriesItem { Name = result.SeriesName, Banner = bannerImage });
+                    var capturedUri = result.BannerUri;
+                    bannerOverride = ImageSource.FromStream(
+                        () => PumpMaui.Platforms.Android.AndroidSafScanner.OpenRead(context, capturedUri));
                 }
 
-                _songsBySeries[result.SeriesName].Add(song);
+                AddSongToSeries(song, result.SeriesName, bannerPath: null, bannerImageOverride: bannerOverride);
                 loadedCount++;
             }
             catch (Exception ex)
@@ -407,18 +443,7 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             foreach (var song in songs.Where(s => s.Charts.Count > 0))
             {
                 var series = GetGameSeriesFromUrl(song.SourcePath ?? string.Empty);
-                if (!_songsBySeries.ContainsKey(series))
-                {
-                    _songsBySeries[series] = [];
-                    GameSeriesList.Add(new GameSeriesItem
-                    {
-                        Name = series,
-                        Banner = ImageSource.FromStream(() =>
-                            FileSystem.OpenAppPackageFileAsync($"banner_{series.Replace(" ", "").ToLower()}.png")
-                                      .GetAwaiter().GetResult())
-                    });
-                }
-                _songsBySeries[series].Add(song);
+                AddSongToSeries(song, series, bannerPath: null);
             }
 
             await DisplayAlert(songs.Count == 0 ? "No Songs" : "Done",
@@ -457,21 +482,21 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     /// Adds a song to the internal series dictionary and <see cref="GameSeriesList" />,
     /// creating the series entry if it doesn't exist yet.
     /// </summary>
-    private void AddSongToSeries(SscSong song, string seriesName, string? bannerPath)
+    private void AddSongToSeries(SscSong song, string seriesName, string? bannerPath, ImageSource? bannerImageOverride = null)
     {
         if (!_songsBySeries.ContainsKey(seriesName))
         {
             _songsBySeries[seriesName] = [];
 
-            ImageSource? bannerImage = null;
+            ImageSource? bannerImage = bannerImageOverride;
 
-            if (bannerPath != null)
+            if (bannerImage == null && bannerPath != null)
             {
                 // External file — use stream so it works on Android
                 var captured = bannerPath;
                 bannerImage = ImageSource.FromStream(() => File.OpenRead(captured));
             }
-            else
+            else if (bannerImage == null)
             {
                 // Try loading an embedded banner from the app package
                 var embeddedBannerPath = $"banner_{seriesName.Replace(" ", "").ToLower()}.png";
@@ -490,19 +515,27 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         }
 
         _songsBySeries[seriesName].Add(song);
+
+        // Register in the global flat list for cross-series search
+        var item = CreateSongListItem(song);
+        _allSongsGlobal.Add(item);
     }
 
     private void AddSong(SscSong song)
     {
-        SongList.Add(new SongListItem
-        {
-            Song = song,
-            Title = song.Title,
-            Artist = song.Artist,
-            ChartSummary = GenerateChartSummary(song),
-            BackgroundImageSource = TryCreateBackground(song)
-        });
+        var item = CreateSongListItem(song);
+        _allSongsInSeries.Add(item);
+        SongList.Add(item);
     }
+
+    private static SongListItem CreateSongListItem(SscSong song) => new()
+    {
+        Song = song,
+        Title = song.Title,
+        Artist = song.Artist,
+        ChartSummary = GenerateChartSummary(song),
+        BackgroundImageSource = TryCreateBackground(song)
+    };
 
     private static ImageSource? TryCreateBackground(SscSong song)
     {
@@ -540,6 +573,28 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     }
 
     // -------------------------------------------------------------------------
+    // Search / filter
+    // -------------------------------------------------------------------------
+
+    private void ApplyGlobalSearchFilter()
+    {
+        SearchResults.Clear();
+
+        if (!IsSearchActive) return;
+
+        foreach (var item in _allSongsGlobal)
+        {
+            if (item.Title.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+                || item.Artist.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                SearchResults.Add(item);
+            }
+        }
+    }
+
+    private void OnSearchTextChanged(object sender, TextChangedEventArgs e) => SearchText = e.NewTextValue;
+
+    // -------------------------------------------------------------------------
     // Series / song selection
     // -------------------------------------------------------------------------
 
@@ -548,6 +603,7 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         var selected = e.CurrentSelection.FirstOrDefault() as GameSeriesItem;
         if (selected == null) return;
 
+        _allSongsInSeries.Clear();
         SongList.Clear();
 
         if (_songsBySeries.TryGetValue(selected.Name, out var songs))
@@ -559,6 +615,7 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
 
     private void OnBackToSeriesClicked(object sender, EventArgs e)
     {
+        _allSongsInSeries.Clear();
         SongList.Clear();
         _selectedSong = null;
         _selectedChart = null;
@@ -600,6 +657,9 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
                 LandscapeSongListView.SelectionChanged += OnSongSelected;
             }
 
+            PortraitSearchResultsView.SelectedItem = null;
+            LandscapeSearchResultsView.SelectedItem = null;
+
             return;
         }
 
@@ -633,6 +693,8 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     {
         SongListView.SelectedItem = null;
         LandscapeSongListView.SelectedItem = null;
+        PortraitSearchResultsView.SelectedItem = null;
+        LandscapeSearchResultsView.SelectedItem = null;
         _selectedSong = null;
         _selectedChart = null;
         HasSelection = false;
@@ -737,7 +799,8 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
                 Chart = _selectedChart,
                 ScrollSpeed = ScrollSpeed,
                 NoteSkin = NoteSkin,
-                RemoteAudioUrl = audioUrl
+                RemoteAudioUrl = audioUrl,
+                JudgmentDifficulty = _judgmentDifficulty
             };
 
             var encodedJson = Uri.EscapeDataString(JsonSerializer.Serialize(gameData));
@@ -831,4 +894,5 @@ public class GameStartData
     public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
     public string NoteSkin { get; set; } = "Prime";
     public string? RemoteAudioUrl { get; set; }
+    public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Easy;
 }

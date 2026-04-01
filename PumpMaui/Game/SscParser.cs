@@ -10,13 +10,15 @@ public static class SscParser
     {
         var parser = new PegParser(content);
         var globalTags = parser.ParseGlobalTags();
+        var bpmChanges = ParseBpmString(globalTags.Get("BPMS"));
+        var tickCounts = ParseTickCountString(globalTags.Get("TICKCOUNTS"));
         var charts = new List<SscChart>();
 
         foreach (var noteDataSection in parser.EnumerateNoteDataSections())
         {
             var chart = ParseSingleChart(
                 noteDataSection,
-                ParseBpmString(globalTags.Get("BPMS")),
+                bpmChanges,
                 ParseDouble(globalTags.Get("OFFSET")) ?? 0);
             if (chart != null)
                 charts.Add(chart);
@@ -27,10 +29,10 @@ public static class SscParser
             Title = globalTags.Get("TITLE", "Unknown Title"),
             Artist = globalTags.Get("ARTIST", "Unknown Artist"),
             OffsetSeconds = globalTags.GetDouble("OFFSET", 0),
-            BpmChanges = ParseBpmString(globalTags.Get("BPMS")),
+            BpmChanges = bpmChanges,
+            TickCounts = tickCounts,
             Charts = charts,
             SourcePath = sourcePath,
-            // Ensure audio/background asset paths are populated from global tags
             MusicPath = globalTags.Get("MUSIC", globalTags.Get("SONG", "")),
             BackgroundPath = globalTags.Get("BANNER", globalTags.Get("BACKGROUND", ""))
         };
@@ -380,6 +382,35 @@ public static class SscParser
 
         if (changes.Count == 0) changes.Add(new BpmChange(0d, 120d));
         return changes;
+    }
+
+    /// <summary>
+    /// Parses a #TICKCOUNTS string such as "0=4,32=2" into a list of
+    /// <see cref="TickCount"/> segments. Defaults to 4 ticks/beat if the tag is absent.
+    /// </summary>
+    private static List<TickCount> ParseTickCountString(string? tickText)
+    {
+        var result = new List<TickCount>();
+        if (string.IsNullOrWhiteSpace(tickText))
+        {
+            result.Add(new TickCount(0d, 4));
+            return result;
+        }
+
+        foreach (var part in tickText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var segments = part.Split('=');
+            if (segments.Length == 2 &&
+                double.TryParse(segments[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var beat) &&
+                int.TryParse(segments[1], out var ticks) &&
+                ticks >= 0)
+            {
+                result.Add(new TickCount(beat, ticks));
+            }
+        }
+
+        if (result.Count == 0) result.Add(new TickCount(0d, 4));
+        return result;
     }
 
     private static List<ChartNote> ParseNotes(string notesText, IReadOnlyList<BpmChange> bpmChanges, double offsetSeconds, string stepType = "pump-single")
