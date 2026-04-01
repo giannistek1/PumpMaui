@@ -32,6 +32,11 @@ public sealed class RhythmGameEngine
     private readonly double[] _laneFlashTimes = [-10d, -10d, -10d, -10d, -10d];
     private readonly bool[] _laneHoldActive = [false, false, false, false, false];
     private readonly bool[] _lanePressed = [false, false, false, false, false];
+
+    // Tracks the most recent judgment on each lane for per-lane visual feedback.
+    private readonly HitJudgment[] _laneLastJudgment =
+        [HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss];
+
     private List<PlayableNote> _notes = [];
     private List<HoldTick> _holdTicks = [];
 
@@ -444,6 +449,26 @@ public sealed class RhythmGameEngine
     public bool IsLaneHoldActive(int lane)
         => lane >= 0 && lane < _laneHoldActive.Length && _laneHoldActive[lane];
 
+    /// <summary>
+    /// Returns the most recent <see cref="HitJudgment"/> registered on <paramref name="lane"/>,
+    /// or <see cref="HitJudgment.Miss"/> if the flash window (250 ms) has already expired.
+    /// This ensures the star-burst effect only appears on the frame window immediately
+    /// after a real note hit — a second press on an empty lane reads Miss and shows nothing.
+    /// </summary>
+    public HitJudgment GetLaneLastJudgment(int lane)
+    {
+        if (lane < 0 || lane >= _laneLastJudgment.Length)
+            return HitJudgment.Miss;
+
+        // Expire the stored judgment once the drawable's burst window has passed.
+        // 0.25 s matches DrawStarBurst's 250 ms fade duration.
+        const double burstWindowSeconds = 0.25d;
+        if (CurrentTimeSeconds - _laneFlashTimes[lane] > burstWindowSeconds)
+            _laneLastJudgment[lane] = HitJudgment.Miss;
+
+        return _laneLastJudgment[lane];
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -484,6 +509,14 @@ public sealed class RhythmGameEngine
             }
         }
 
+        // Record judgment on every lane that flashed within the last frame so the
+        // drawable can render per-lane effects (e.g. star burst for Perfect/Great).
+        for (var i = 0; i < _laneFlashTimes.Length; i++)
+        {
+            if (CurrentTimeSeconds - _laneFlashTimes[i] < 0.05d)
+                _laneLastJudgment[i] = judgment;
+        }
+
         Score = PhoenixScoring.CalculateScore(_counts, TotalNoteCount, MaxCombo);
         Grade = PhoenixScoring.CalculateGrade(Score);
         Plate = PhoenixScoring.CalculatePlate(_counts, TotalNoteCount);
@@ -516,6 +549,7 @@ public sealed class RhythmGameEngine
             _laneFlashTimes[lane] = -10d;
             _laneHoldActive[lane] = false;
             _lanePressed[lane] = false;
+            _laneLastJudgment[lane] = HitJudgment.Miss;
         }
 
         CurrentTimeSeconds = 0d;

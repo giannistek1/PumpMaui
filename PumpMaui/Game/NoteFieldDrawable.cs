@@ -513,6 +513,7 @@ public sealed class NoteFieldDrawable : IDrawable
         }
     }
 
+
     private void DrawReceptors(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY)
     {
         float x = laneGap;
@@ -524,28 +525,21 @@ public sealed class NoteFieldDrawable : IDrawable
             var isHoldActive = _engine.IsLaneHoldActive(lane);
             var glow = flashAge >= 0d && flashAge <= 0.14d ? (float)(1d - flashAge / 0.14d) : 0f;
 
-            // Enhanced glow for active holds with pulsing effect
             if (isHoldActive)
             {
                 var pulseGlow = 0.6f + 0.4f * MathF.Sin((float)_engine.CurrentTimeSeconds * 6f);
                 glow = Math.Max(glow, pulseGlow);
             }
 
-            // Smaller receptors for landscape to match note sizing
             float receptorSize;
             if (IsLandscapeMode)
-            {
                 receptorSize = MathF.Min(width * 0.75f, 38f);
-            }
             else
-            {
                 receptorSize = MathF.Min(width * 0.80f, 44f);
-            }
 
             canvas.SaveState();
             canvas.Translate(centerX, receptorY);
 
-            // Add extra glow ring for active holds
             if (isHoldActive)
             {
                 var glowSize = receptorSize * 1.3f;
@@ -556,13 +550,18 @@ public sealed class NoteFieldDrawable : IDrawable
                     canvas.FillEllipse(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize);
             }
 
-            // Draw receptor using grayscale images / fallbacks
+            // Star burst for Perfect / Great — drawn behind the receptor image
+            var lastJudgment = _engine.GetLaneLastJudgment(lane);
+            var isStarworthy = (lastJudgment == HitJudgment.Perfect || lastJudgment == HitJudgment.Great)
+                               && flashAge >= 0d && flashAge <= 0.30d;
+
+            if (isStarworthy)
+                DrawStarBurst(canvas, lane, receptorSize, flashAge, lastJudgment);
+
             DrawReceptorShape(canvas, lane, receptorSize, glow, isHoldActive);
 
-            // Smaller yellow press glow: use reduced scale and size
             if (glow > 0f)
             {
-                // Reduced pulse amplitude and alpha scale for a more subtle halo
                 var pulse = 0.9f + 0.05f * MathF.Sin((float)_engine.CurrentTimeSeconds * 18f);
                 var yellowAlpha = Math.Clamp(glow * 0.5f * pulse, 0f, 1f);
 
@@ -571,13 +570,11 @@ public sealed class NoteFieldDrawable : IDrawable
 
                 if (lane == 2)
                 {
-                    // Smaller rounded overlay for center receptor
                     var haloSize = receptorSize * 1.2f;
                     canvas.FillRoundedRectangle(-haloSize / 2f, -haloSize / 2f, haloSize, haloSize, 8f);
                 }
                 else
                 {
-                    // Smaller circular halo for arrow receptors
                     var haloSize = receptorSize * 1.3f;
                     canvas.FillEllipse(-haloSize / 2f, -haloSize / 2f, haloSize, haloSize);
                 }
@@ -1037,5 +1034,58 @@ public sealed class NoteFieldDrawable : IDrawable
         canvas.FontSize = 14f;
         //canvas.DrawString("PHOENIX STYLE NOTE FIELD", 12f, 10f, dirtyRect.Width - 24f, 18f, HorizontalAlignment.Left, VerticalAlignment.Center);
         //canvas.DrawString("JUDGE", 12f, receptorY - 6f, dirtyRect.Width - 24f, 16f, HorizontalAlignment.Left, VerticalAlignment.Top);
+    }
+    /// <summary>
+    /// Draws a bright lens-flare style cross-light effect (two lines crossing at 90°,
+    /// rotated 45° to form an ×) centred at the current canvas origin.
+    /// Always white/bright regardless of judgment type.
+    /// Expands outward and fades over 250 ms.
+    /// </summary>
+    private static void DrawStarBurst(ICanvas canvas, int lane, float receptorSize, double flashAge, HitJudgment judgment)
+    {
+        // t: 0 = just hit, 1 = fully faded
+        var t = (float)(flashAge / 0.25d);
+
+        // Overall alpha: full brightness at start, gone by end
+        var alpha = Math.Clamp(1.0f - t, 0f, 1f);
+        // Arm length: starts at 0.65× receptor size, expands to 1.5× (was 1.0× → 2.8×)
+        var armLength = receptorSize * (0.65f + 0.85f * t);
+        // Arm width: starts slightly thinner, tapers the same way
+        var armWidth = receptorSize * Math.Clamp(0.22f - 0.18f * t, 0.03f, 0.22f);
+
+        canvas.SaveState();
+
+        // Soft outer glow halo — pure white, very transparent
+        var glowRadius = armLength * 0.55f;
+        canvas.FillColor = Colors.White.WithAlpha(alpha * 0.18f);
+        canvas.FillEllipse(-glowRadius, -glowRadius, glowRadius * 2f, glowRadius * 2f);
+
+        // Draw two crossing lines at 0° and 90°, rotated 45° for the × look
+        canvas.Rotate(45f);
+
+        canvas.StrokeColor = Colors.White.WithAlpha(alpha);
+        canvas.StrokeSize = armWidth;
+        canvas.StrokeLineCap = LineCap.Round;
+
+        // Horizontal arm
+        canvas.DrawLine(-armLength, 0f, armLength, 0f);
+        // Vertical arm
+        canvas.DrawLine(0f, -armLength, 0f, armLength);
+
+        // Second, slightly narrower pass with higher alpha for the bright core streak
+        var coreAlpha = Math.Clamp((1.0f - t) * 1.6f, 0f, 1f);
+        var coreLength = armLength * 0.55f;
+        canvas.StrokeColor = Colors.White.WithAlpha(coreAlpha);
+        canvas.StrokeSize = armWidth * 0.45f;
+        canvas.DrawLine(-coreLength, 0f, coreLength, 0f);
+        canvas.DrawLine(0f, -coreLength, 0f, coreLength);
+
+        canvas.RestoreState();
+
+        // Bright white core dot that flashes at the centre and shrinks fast
+        var dotAlpha = Math.Clamp((1.0f - t) * 2.0f, 0f, 1f);
+        var dotRadius = receptorSize * 0.18f * (1.0f - t * 0.8f);
+        canvas.FillColor = Colors.White.WithAlpha(dotAlpha);
+        canvas.FillEllipse(-dotRadius, -dotRadius, dotRadius * 2f, dotRadius * 2f);
     }
 }
