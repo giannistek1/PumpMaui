@@ -93,13 +93,13 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
     // True whenever the user has typed something — drives visibility in XAML
     public bool IsSearchActive => !string.IsNullOrWhiteSpace(_searchText);
 
-    private JudgmentDifficulty _judgmentDifficulty = JudgmentDifficulty.Easy;
+    private JudgmentDifficulty _judgmentDifficulty = JudgmentDifficulty.Standard;
     public string JudgmentDifficultyString
     {
         get => _judgmentDifficulty.ToString();
         set
         {
-            var parsed = Enum.TryParse<JudgmentDifficulty>(value, out var result) ? result : JudgmentDifficulty.Easy;
+            var parsed = Enum.TryParse<JudgmentDifficulty>(value, out var result) ? result : JudgmentDifficulty.Standard;
             if (_judgmentDifficulty == parsed) return;
             _judgmentDifficulty = parsed;
             OnPropertyChanged();
@@ -894,5 +894,5 @@ public class GameStartData
     public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
     public string NoteSkin { get; set; } = "Prime";
     public string? RemoteAudioUrl { get; set; }
-    public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Easy;
+    public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Standard;
 }

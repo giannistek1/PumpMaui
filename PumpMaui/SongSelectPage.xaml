@@ -133,7 +133,7 @@
                                 HeightRequest="{OnPlatform Default=40, iOS=35, Android=35}"
                                 WidthRequest="90">
                             <Picker.Items>
-                                <x:String>Easy</x:String>
+                                <x:String>Standard</x:String>
                                 <x:String>Hard</x:String>
                             </Picker.Items>
                         </Picker>
@@ -581,7 +581,7 @@
                         HeightRequest="35"
                         WidthRequest="90">
                     <Picker.Items>
-                        <x:String>Easy</x:String>
+                        <x:String>Standard</x:String>
                         <x:String>Hard</x:String>
                     </Picker.Items>
                 </Picker>
