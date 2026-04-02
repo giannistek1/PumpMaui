@@ -303,6 +303,7 @@ public sealed class RhythmGameEngine
             // Pre-press: button already held when a hold head arrives
             if (note.Type == NoteType.HoldStart && !_laneHoldActive[note.Lane] && _lanePressed[note.Lane])
             {
+                // Only accept pre-press within the acceptable window
                 if (delta >= -PreHoldAcceptanceSeconds && delta <= badWindow)
                 {
                     // Check if this hold-start is part of a chord
@@ -341,29 +342,43 @@ public sealed class RhythmGameEngine
             }
 
             // Handle hold-end notes for active holds
-            if (note.Type == NoteType.HoldEnd && _laneHoldActive[note.Lane])
+            if (note.Type == NoteType.HoldEnd)
             {
-                if (Math.Abs(delta) <= badWindow)
+                if (_laneHoldActive[note.Lane])
                 {
-                    note.Consumed = true;
-                    _laneHoldActive[note.Lane] = false;
-                    if (note.HoldPartner != null) note.HoldPartner.IsHoldActive = false;
-                    RegisterJudgment(HitJudgment.Perfect);
-                    processedThisFrame.Add(note);
+                    // Hold is active - check if player released at the right time
+                    if (Math.Abs(delta) <= badWindow)
+                    {
+                        note.Consumed = true;
+                        _laneHoldActive[note.Lane] = false;
+                        if (note.HoldPartner != null) note.HoldPartner.IsHoldActive = false;
+                        RegisterJudgment(PhoenixScoring.GetJudgment(delta, this.JudgmentDifficulty));
+                        processedThisFrame.Add(note);
+                    }
+                    else if (delta > badWindow)
+                    {
+                        note.Consumed = true;
+                        note.Missed = true;
+                        _laneHoldActive[note.Lane] = false;
+                        if (note.HoldPartner != null) note.HoldPartner.IsHoldActive = false;
+                        RegisterJudgment(HitJudgment.Bad);
+                        processedThisFrame.Add(note);
+                    }
                 }
                 else if (delta > badWindow)
                 {
+                    // Hold was never activated (player missed the hold start) - auto-consume the tail
                     note.Consumed = true;
                     note.Missed = true;
-                    _laneHoldActive[note.Lane] = false;
-                    if (note.HoldPartner != null) note.HoldPartner.IsHoldActive = false;
-                    RegisterJudgment(HitJudgment.Bad);
                     processedThisFrame.Add(note);
+                    // Don't register a judgment - the miss was already counted on the hold start
                 }
+
                 continue; // Skip chord grouping for hold-end notes
             }
 
-            // Auto-miss: tap/hold-start note has passed the bad window
+            // Auto-miss: tap/hold-start note has passed the bad window (LATE timing window)
+            // Only process notes that are truly past their timing window
             if (delta > badWindow && (note.Type == NoteType.Tap || note.Type == NoteType.HoldStart))
             {
                 // Find all simultaneous notes (chord) that also need to be missed
@@ -400,10 +415,28 @@ public sealed class RhythmGameEngine
             RegisterJudgment(_lanePressed[tick.Lane] ? HitJudgment.Perfect : HitJudgment.Miss);
         }
 
-        if (elapsedSeconds >= SongDurationSeconds && _notes.All(note => note.Consumed))
+        // Check if game should end - exclude HoldBody notes as they're visual only
+        var scoreableNotes = _notes.Where(n => n.Type != NoteType.HoldBody).ToList();
+
+        if (elapsedSeconds >= SongDurationSeconds && scoreableNotes.All(note => note.Consumed))
         {
+            System.Diagnostics.Debug.WriteLine($"🎮 Song ending - elapsedSeconds: {elapsedSeconds:F2}, SongDurationSeconds: {SongDurationSeconds:F2}");
+            System.Diagnostics.Debug.WriteLine($"   All scoreable notes consumed: {scoreableNotes.Count(n => n.Consumed)}/{scoreableNotes.Count}");
             IsPlaying = false;
             LastJudgmentText = $"FINAL {Grade}";
+        }
+        else if (elapsedSeconds >= SongDurationSeconds)
+        {
+            // Debug: show which notes aren't consumed yet
+            var unconsumed = scoreableNotes.Where(n => !n.Consumed).ToList();
+            if (unconsumed.Count > 0 && unconsumed.Count <= 10)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ Song time reached but {unconsumed.Count} scoreable notes not consumed:");
+                foreach (var n in unconsumed)
+                {
+                    System.Diagnostics.Debug.WriteLine($"   Lane {n.Lane}, Type {n.Type}, Time {n.TimeSeconds:F2}s, Missed: {n.Missed}");
+                }
+            }
         }
     }
 

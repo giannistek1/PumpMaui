@@ -291,6 +291,7 @@ public partial class GamePage : ContentPage
         var previousMissCombo = _engine.MissCombo;
         var previousJudgment = _engine.LastJudgmentText;
         var previousTimeSeconds = _engine.CurrentTimeSeconds;
+        var wasPlaying = _engine.IsPlaying;
 
         _engine.Update(engineTime);
 
@@ -310,8 +311,13 @@ public partial class GamePage : ContentPage
             LandscapeNoteFieldView?.Invalidate();
         }
 
-        if (!_engine.IsPlaying && _playbackTimer.IsRunning)
+        // Check if the game just ended (was playing, now stopped)
+        if (wasPlaying && !_engine.IsPlaying)
         {
+            System.Diagnostics.Debug.WriteLine("🎮 Game ended - navigating to results");
+            System.Diagnostics.Debug.WriteLine($"   Final Score: {_engine.Score}");
+            System.Diagnostics.Debug.WriteLine($"   Final Grade: {_engine.Grade}");
+
             _playbackTimer.Stop();
 
             var resultsData = new GameResultsData
@@ -333,11 +339,26 @@ public partial class GamePage : ContentPage
                 MissCount = _engine.Counts[HitJudgment.Miss]
             };
 
-            var resultsJson = System.Text.Json.JsonSerializer.Serialize(resultsData);
+            var resultsJson = JsonSerializer.Serialize(resultsData);
             var encodedResults = Uri.EscapeDataString(resultsJson);
 
-            Dispatcher.Dispatch(async () =>
-                await Shell.Current.GoToAsync($"ResultsPage?resultsData={encodedResults}"));
+            System.Diagnostics.Debug.WriteLine($"🎮 Navigating to ResultsPage with data length: {encodedResults.Length}");
+
+            // Use BeginInvokeOnMainThread to ensure we're on the UI thread
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine("🎮 Starting navigation...");
+                    await Shell.Current.GoToAsync($"ResultsPage?resultsData={encodedResults}");
+                    System.Diagnostics.Debug.WriteLine("🎮 Navigation completed");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"❌ Navigation failed: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"   Stack: {ex.StackTrace}");
+                }
+            });
         }
 
         return true;
