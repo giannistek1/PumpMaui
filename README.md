@@ -1,2 +1,3 @@
 # TapItUp
-A public open source pump it up simulator (for Windows/Android/iOS) made with MAUI.
+A public open source dance simulation arcade game for Windows/Android/iOS made with MAUI.
+Based on StepMania 5.
