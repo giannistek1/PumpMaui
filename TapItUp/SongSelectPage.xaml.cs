@@ -281,6 +281,11 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         var loadedCount = 0;
         var errorCount = 0;
 
+        // Show loading UI immediately before scanning
+        SetLoadingVisible(true);
+        LoadingLabelPortrait.Text = "Scanning folder... This may take a minute.";
+        LoadingLabelLandscape.Text = "Scanning folder... This may take a minute.";
+
         List<TapItUp.Platforms.Android.ScanResult> scanResults;
         try
         {
@@ -289,22 +294,47 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            SetLoadingVisible(false);
             await DisplayAlert("Error", $"Failed to scan folder: {ex.Message}", "OK");
             return;
         }
 
         if (scanResults.Count == 0)
         {
+            SetLoadingVisible(false);
             await DisplayAlert("No Songs Found",
                 "No .ssc files were found.\n\nExpected structure:\n  Root / Game Series / Song / song.ssc",
                 "OK");
             return;
         }
 
+        var progress = new Progress<LoadProgress>(p => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var text = $"{p.Message} ({p.Current}/{p.Total})";
+            LoadingLabelPortrait.Text = text;
+            LoadingProgressBarPortrait.Progress = p.Percentage;
+            LoadingLabelLandscape.Text = text;
+            LoadingProgressBarLandscape.Progress = p.Percentage;
+        }));
+
+        var i = 0;
         foreach (var result in scanResults)
         {
             try
             {
+                i++;
+                var songName = Path.GetFileNameWithoutExtension(result.SscUri);
+                
+                // Decode URL-encoded characters (e.g., %20 -> space)
+                songName = Uri.UnescapeDataString(songName);
+
+                ((IProgress<LoadProgress>)progress).Report(new LoadProgress
+                {
+                    Message = $"Loading {songName}...",
+                    Current = i,
+                    Total = scanResults.Count
+                });
+
                 var content = await TapItUp.Platforms.Android.AndroidSafScanner.ReadTextAsync(context, result.SscUri);
                 var song = SscParser.Parse(content, result.SscUri);
                 song.SongDocumentUri = result.SongDocumentUri;
@@ -328,6 +358,8 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
                 System.Diagnostics.Debug.WriteLine($"[SongSelect] SAF load failed for {result.SscUri}: {ex.Message}");
             }
         }
+
+        SetLoadingVisible(false);
 
         var message = loadedCount == 0
             ? "No songs with valid charts were found.\n\nExpected structure:\n  Root / Game Series / Song / song.ssc"
