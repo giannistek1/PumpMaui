@@ -346,32 +346,32 @@ public sealed class RhythmGameEngine
             {
                 if (_laneHoldActive[note.Lane])
                 {
-                    // Hold is active - check if player released at the right time
-                    if (Math.Abs(delta) <= badWindow)
+                    // Hold is active - check if we've reached the judgment point
+                    if (delta >= 0)
                     {
+                        // At or past the hold-end note - judge based on whether button is still pressed
                         note.Consumed = true;
                         _laneHoldActive[note.Lane] = false;
                         if (note.HoldPartner != null) note.HoldPartner.IsHoldActive = false;
-                        RegisterJudgment(PhoenixScoring.GetJudgment(delta, this.JudgmentDifficulty));
-                        processedThisFrame.Add(note);
-                    }
-                    else if (delta > badWindow)
-                    {
-                        note.Consumed = true;
-                        note.Missed = true;
-                        _laneHoldActive[note.Lane] = false;
-                        if (note.HoldPartner != null) note.HoldPartner.IsHoldActive = false;
-                        RegisterJudgment(HitJudgment.Bad);
+
+                        // Hold notes are binary: Perfect if held, Miss if not
+                        var judgment = _lanePressed[note.Lane] ? HitJudgment.Perfect : HitJudgment.Miss;
+
+                        RegisterJudgment(judgment);
                         processedThisFrame.Add(note);
                     }
                 }
-                else if (delta > badWindow)
+                else
                 {
-                    // Hold was never activated (player missed the hold start) - auto-consume the tail
-                    note.Consumed = true;
-                    note.Missed = true;
-                    processedThisFrame.Add(note);
-                    // Don't register a judgment - the miss was already counted on the hold start
+                    // Hold is not active
+                    if (delta > badWindow)
+                    {
+                        // Hold was never activated (player missed the hold start) - auto-consume the tail
+                        note.Consumed = true;
+                        note.Missed = true;
+                        processedThisFrame.Add(note);
+                        // Don't register a judgment - the miss was already counted on the hold start
+                    }
                 }
 
                 continue; // Skip chord grouping for hold-end notes
@@ -466,7 +466,7 @@ public sealed class RhythmGameEngine
             {
                 var worstJudgment = pendingChord.Notes
                     .Select(n => PhoenixScoring.GetJudgment(CurrentTimeSeconds - n.TimeSeconds, this.JudgmentDifficulty))
-                    .OrderByDescending(j => (int)j)
+                    .OrderByDescending(j => j)
                     .First();
 
                 foreach (var n in pendingChord.Notes)
