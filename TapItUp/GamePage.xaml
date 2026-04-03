@@ -139,7 +139,7 @@
                 <!-- Left input pad - Scales with available space -->
                 <Grid x:Name="LandscapeLeftPad" 
                       HorizontalOptions="Fill"
-                      VerticalOptions="Fill"
+                      VerticalOptions="End"
                       Margin="0,8,0,0"/>
             </Grid>
 
@@ -216,8 +216,8 @@
                 <!-- Right input pad - Scales with available space -->
                 <Grid x:Name="LandscapeRightPad" 
                       HorizontalOptions="Fill"
-                      VerticalOptions="Fill"
-                      Margin="0,30,0,0"/>
+                      VerticalOptions="End"
+                      Margin="0,8,0,0"/>
             </Grid>
 
             <!-- Bottom stats across full width -->

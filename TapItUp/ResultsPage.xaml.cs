@@ -74,12 +74,13 @@ public partial class ResultsPage : ContentPage
         var formattedScore = _resultsData.Score.ToString("N0");
         var gradeColor = PhoenixScoring.GetGradeColor(_resultsData.Grade);
         var plateColor = PhoenixScoring.GetPlateColor(_resultsData.Plate);
+        var plateInitials = GetPlateInitials(_resultsData.Plate);
 
         // Portrait labels
         ScoreLabel.Text = formattedScore;
         GradeLabel.Text = _resultsData.Grade;
         GradeLabel.TextColor = gradeColor;
-        PlateLabel.Text = _resultsData.Plate;
+        PlateLabel.Text = plateInitials;
         PlateLabel.TextColor = plateColor;
         AccuracyLabel.Text = $"{_resultsData.Accuracy:F2}%";
         MaxComboLabel.Text = _resultsData.MaxCombo.ToString();
@@ -93,7 +94,7 @@ public partial class ResultsPage : ContentPage
         ScoreLabelLandscape.Text = formattedScore;
         GradeLabelLandscape.Text = _resultsData.Grade;
         GradeLabelLandscape.TextColor = gradeColor;
-        PlateLabelLandscape.Text = _resultsData.Plate;
+        PlateLabelLandscape.Text = plateInitials;
         PlateLabelLandscape.TextColor = plateColor;
         AccuracyLabelLandscape.Text = $"{_resultsData.Accuracy:F2}%";
         MaxComboLabelLandscape.Text = _resultsData.MaxCombo.ToString();
@@ -118,6 +119,22 @@ public partial class ResultsPage : ContentPage
 
         return string.IsNullOrEmpty(prefix) ? meter.ToString() : $"{prefix}{meter}";
     }
+
+    /// <summary>
+    /// Converts plate names to initials (e.g., "Perfect Game" -> "PG")
+    /// </summary>
+    private static string GetPlateInitials(string plate) => plate switch
+    {
+        "Perfect Game" => "PG",
+        "Ultimate Game" => "UG",
+        "Extreme Game" => "EG",
+        "SuperB Game" => "SG",
+        "Marvelous Game" => "MG",
+        "Talented Game" => "TG",
+        "Fair Game" => "FG",
+        "Rough Game" => "RG",
+        _ => plate // Fallback to full name if unknown
+    };
 
     private async void OnSongSelectClicked(object sender, EventArgs e)
     {

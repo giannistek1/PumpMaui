@@ -801,7 +801,7 @@ public partial class GamePage : ContentPage
 
             // Center the compact grid in its container
             grid.HorizontalOptions = LayoutOptions.Center;
-            grid.VerticalOptions = LayoutOptions.Center;
+            grid.VerticalOptions = LayoutOptions.End; // Overrides xaml
         }
         else
         {
