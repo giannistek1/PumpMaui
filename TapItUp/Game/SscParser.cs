@@ -12,6 +12,7 @@ public static class SscParser
         var globalTags = parser.ParseGlobalTags();
         var bpmChanges = ParseBpmString(globalTags.Get("BPMS"));
         var tickCounts = ParseTickCountString(globalTags.Get("TICKCOUNTS"));
+        var speedChanges = ParseSpeedString(globalTags.Get("SPEEDS"));
         var charts = new List<SscChart>();
 
         foreach (var noteDataSection in parser.EnumerateNoteDataSections())
@@ -31,6 +32,7 @@ public static class SscParser
             OffsetSeconds = globalTags.GetDouble("OFFSET", 0),
             BpmChanges = bpmChanges,
             TickCounts = tickCounts,
+            SpeedChanges = speedChanges,
             Charts = charts,
             SourcePath = sourcePath,
             MusicPath = globalTags.Get("MUSIC", globalTags.Get("SONG", "")),
@@ -418,6 +420,34 @@ public static class SscParser
         }
 
         if (result.Count == 0) result.Add(new TickCount(0d, 4));
+        return result;
+    }
+
+    /// <summary>
+    /// Parses a #SPEEDS string such as "0=1=0=0,64=0.5=0=0" into a list of
+    /// <see cref="SpeedChange"/> segments. Each entry is beat=multiplier=duration=mode.
+    /// Only beat and multiplier are used; duration and mode are ignored (Pump IT Up uses instant mode).
+    /// Defaults to 1.0 if absent.
+    /// </summary>
+    private static List<SpeedChange> ParseSpeedString(string? speedText)
+    {
+        var result = new List<SpeedChange>();
+        if (string.IsNullOrWhiteSpace(speedText))
+            return result;
+
+        foreach (var part in speedText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            // Format: beat=multiplier=duration=mode  (we only need the first two)
+            var segments = part.Split('=');
+            if (segments.Length >= 2 &&
+                double.TryParse(segments[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var beat) &&
+                double.TryParse(segments[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var multiplier) &&
+                multiplier > 0d)
+            {
+                result.Add(new SpeedChange(beat, multiplier));
+            }
+        }
+
         return result;
     }
 

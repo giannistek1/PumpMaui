@@ -8,11 +8,10 @@ using System.Text.Json;
 
 namespace TapItUp;
 
-public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
+public partial class SongSelectPage : ContentPage
 {
     private SscSong? _selectedSong;
     private SscChart? _selectedChart;
-    private double _scrollSpeed = GameConstants.DefaultScrollSpeed;
     private List<SscChart> _currentSortedCharts = [];
 
     public ObservableCollection<SongListItem> SongList { get; } = [];
@@ -34,19 +33,6 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         private set { if (_hasSelection == value) return; _hasSelection = value; OnPropertyChanged(); }
     }
 
-    public double ScrollSpeed
-    {
-        get => _scrollSpeed;
-        set
-        {
-            if (Math.Abs(_scrollSpeed - value) < 0.01) return;
-            _scrollSpeed = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(ScrollSpeedText));
-        }
-    }
-
-    public string ScrollSpeedText => $"{_scrollSpeed:F1}x";
 
     private string _noteSkin = "Prime";
     public string NoteSkin
@@ -106,6 +92,23 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
+
+    private int _av = GameConstants.DefaultAv;
+
+    public int Av
+    {
+        get => _av;
+        set
+        {
+            var clamped = Math.Clamp(value, 300, 999);
+            if (_av == clamped) return;
+            _av = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AvText));
+        }
+    }
+
+    public string AvText => $"AV {_av}";
 
     public SongSelectPage()
     {
@@ -851,7 +854,7 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
             {
                 Song = _selectedSong,
                 Chart = _selectedChart,
-                ScrollSpeed = ScrollSpeed,
+                Av = Av,
                 NoteSkin = NoteSkin,
                 RemoteAudioUrl = audioUrl,
                 JudgmentDifficulty = _judgmentDifficulty
@@ -925,11 +928,7 @@ public partial class SongSelectPage : ContentPage, INotifyPropertyChanged
         return split.Length < 2 ? "UNKNOWN" : split[1].Trim().ToUpperInvariant();
     }
 
-    private void OnScrollSpeedChanged(object sender, ValueChangedEventArgs e) => ScrollSpeed = e.NewValue;
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    private void OnAvChanged(object sender, ValueChangedEventArgs e) => Av = (int)Math.Round(e.NewValue);
 }
 
 public class SongListItem
@@ -945,7 +944,7 @@ public class GameStartData
 {
     public required SscSong Song { get; set; }
     public required SscChart Chart { get; set; }
-    public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
+    public int Av { get; set; } = GameConstants.DefaultAv;
     public string NoteSkin { get; set; } = "Prime";
     public string? RemoteAudioUrl { get; set; }
     public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Standard;

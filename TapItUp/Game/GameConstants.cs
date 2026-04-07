@@ -2,8 +2,9 @@
 
 public static class GameConstants
 {
-    // Default scroll speed - single source of truth
-    public const double DefaultScrollSpeed = 1.0;
+    // Default AV (ArrowVelocity) — range 300–999.
+    // Visual scroll speed = AV / currentBPM, so 300 BPM song at AV 300 = 1× speed.
+    public const int DefaultAv = 300;
 
     public static readonly string[] Songs = [
         "Songs/16 - PHOENIX/18042 - Simon Says, EURODANCE!! (feat. Sara M)/16B1 - Simon Says, EURODANCE!! (feat. Sara M).ssc",

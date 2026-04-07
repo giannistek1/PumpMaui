@@ -108,13 +108,17 @@ public partial class GamePage : ContentPage
                 _song = gameStartData.Song;
                 _chart = gameStartData.Chart;
 
-                // Set the scroll speed from the song select page on BOTH drawables
-                System.Diagnostics.Debug.WriteLine($"🎮 Setting scroll speed to: {gameStartData.ScrollSpeed:F1}x");
-                _noteFieldDrawable.ScrollSpeedMultiplier = gameStartData.ScrollSpeed;
+                // Convert AV to a scroll speed multiplier using the song's starting BPM.
+                // scrollMultiplier = AV / startingBpm, so AV 300 at 150 BPM = 2.0×.
+                var startingBpm = gameStartData.Song.BpmChanges.Count > 0
+                    ? gameStartData.Song.BpmChanges.OrderBy(b => b.Beat).First().Bpm
+                    : 150d;
+                var scrollMultiplier = gameStartData.Av / startingBpm;
+
+                System.Diagnostics.Debug.WriteLine($"🎮 AV: {gameStartData.Av}, Starting BPM: {startingBpm:F1}, Scroll multiplier: {scrollMultiplier:F3}");
+                _noteFieldDrawable.ScrollSpeedMultiplier = scrollMultiplier;
                 if (_landscapeNoteFieldDrawable != null)
-                {
-                    _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = gameStartData.ScrollSpeed;
-                }
+                    _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = scrollMultiplier;
 
                 // Set the note skin on BOTH drawables
                 System.Diagnostics.Debug.WriteLine($"🎮 Setting note skin to: {gameStartData.NoteSkin}");
@@ -125,7 +129,6 @@ public partial class GamePage : ContentPage
                 }
                 _engine.JudgmentDifficulty = gameStartData.JudgmentDifficulty;
 
-                System.Diagnostics.Debug.WriteLine($"🎮 Loading game with scroll speed: {gameStartData.ScrollSpeed:F1}x and note skin: {gameStartData.NoteSkin}");
                 System.Diagnostics.Debug.WriteLine($"   Song: {_song.Title}");
                 System.Diagnostics.Debug.WriteLine($"   Artist: {_song.Artist}");
                 System.Diagnostics.Debug.WriteLine($"   Chart: {_chart.Difficulty} {_chart.Meter}");
@@ -161,6 +164,13 @@ public partial class GamePage : ContentPage
                         System.Diagnostics.Debug.WriteLine($"❌ Failed to load audio: {ex.Message}");
                     }
                 }
+
+                // Store AV directly on the drawables — the scroll window is computed
+                // as 720 / AV seconds, matching real Pump It Up scroll timing.
+                System.Diagnostics.Debug.WriteLine($"🎮 AV: {gameStartData.Av}");
+                _noteFieldDrawable.Av = gameStartData.Av;
+                if (_landscapeNoteFieldDrawable != null)
+                    _landscapeNoteFieldDrawable.Av = gameStartData.Av;
 
                 await LoadSongAndChart();
                 return;
@@ -1115,7 +1125,7 @@ public partial class GamePage : ContentPage
     {
         public SscSong Song { get; set; } = null!;
         public SscChart Chart { get; set; } = null!;
-        public double ScrollSpeed { get; set; } = GameConstants.DefaultScrollSpeed;
+        public int Av { get; set; } = GameConstants.DefaultAv;
         public string NoteSkin { get; set; } = "Prime";
         public string? RemoteAudioUrl { get; set; }
         public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Standard;

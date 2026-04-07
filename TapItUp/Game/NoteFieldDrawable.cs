@@ -36,6 +36,12 @@ public sealed class NoteFieldDrawable : IDrawable
     // Note skin property
     public string NoteSkin { get; set; } = "Prime";
 
+    /// <summary>
+    /// Arrow Velocity (300–999). The visible scroll window is 720 / Av seconds,
+    /// matching real Pump It Up scroll timing (AV 180 ≈ 4 s, AV 270 ≈ 2.67 s, AV 470 ≈ 1.53 s).
+    /// </summary>
+    public int Av { get; set; } = GameConstants.DefaultAv;
+
     public NoteFieldDrawable(RhythmGameEngine engine)
     {
         _engine = engine;
@@ -46,7 +52,7 @@ public sealed class NoteFieldDrawable : IDrawable
         }
     }
 
-    public double ScrollSpeedMultiplier { get; set; } = GameConstants.DefaultScrollSpeed;
+    public double ScrollSpeedMultiplier { get; set; } = GameConstants.DefaultAv / 150d; // default AV 300 at 150 BPM
     public bool IsLandscapeMode { get; set; } = false;
 
     private static async Task LoadImagesAsync()
@@ -350,12 +356,9 @@ public sealed class NoteFieldDrawable : IDrawable
         var isDouble = _engine.IsDoubleChart;
         var laneCount = isDouble ? 10 : 5;
 
-        // Adjust sizing for landscape mode - improved spacing
         var topMargin = IsLandscapeMode ? 8f : 24f;
         var bottomMargin = IsLandscapeMode ? 12f : 26f;
         var receptorY = IsLandscapeMode ? 50f : 92f;
-
-        // FORCE zero gap for both landscape and portrait so lanes touch (0 px)
         var laneGap = 0f;
 
         float unit = dirtyRect.Width / laneCount;
@@ -363,15 +366,80 @@ public sealed class NoteFieldDrawable : IDrawable
 
         var fieldBottom = dirtyRect.Height - bottomMargin;
 
-        DrawLaneBackgrounds(canvas, dirtyRect, actualWidths, laneGap, receptorY, fieldBottom, laneCount, isDouble);
-        DrawHoldBodies(canvas, actualWidths, laneGap, receptorY, fieldBottom, laneCount);
+        // Scroll window in seconds: 720 / AV, scaled by any in-song #SPEEDS modifier.
+        var songSpeedMultiplier = GetActiveSongSpeedMultiplier();
+        var scrollWindowSeconds = 720.0 / Av / songSpeedMultiplier;
+
+        DrawLaneBackgrounds(canvas, dirtyRect, actualWidths, laneGap, receptorY, fieldBottom, laneCount);
+        DrawHoldBodies(canvas, actualWidths, laneGap, receptorY, fieldBottom, laneCount, scrollWindowSeconds);
         DrawReceptors(canvas, actualWidths, laneGap, receptorY, laneCount);
-        DrawNotes(canvas, actualWidths, laneGap, receptorY, fieldBottom, laneCount);
+        DrawNotes(canvas, actualWidths, laneGap, receptorY, fieldBottom, laneCount, scrollWindowSeconds);
         DrawFrame(canvas, dirtyRect, receptorY, topMargin);
         canvas.RestoreState();
     }
 
-    private void DrawLaneBackgrounds(ICanvas canvas, RectF dirtyRect, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount, bool isDouble)
+    /// <summary>
+    /// Returns the #SPEEDS multiplier active at the current engine time.
+    /// Falls back to 1.0 when no #SPEEDS tag is present.
+    /// </summary>
+    private double GetActiveSongSpeedMultiplier()
+    {
+        var speedChanges = _engine.Song?.SpeedChanges;
+        if (speedChanges == null || speedChanges.Count == 0)
+            return 1.0;
+
+        var bpmChanges = _engine.Song?.BpmChanges;
+        if (bpmChanges == null || bpmChanges.Count == 0)
+            return 1.0;
+
+        var currentBeat = SecondsToBeat(_engine.CurrentTimeSeconds, bpmChanges);
+
+        var active = speedChanges[0].Multiplier;
+        foreach (var sc in speedChanges)
+        {
+            if (sc.Beat <= currentBeat + 0.0001)
+                active = sc.Multiplier;
+            else
+                break;
+        }
+        return active;
+    }
+
+    /// <summary>
+    /// Converts an elapsed-time value (seconds) back to a beat number using
+    /// the song's BPM change list. Inverse of BeatToSeconds in SscParser.
+    /// </summary>
+    private static double SecondsToBeat(double seconds, IReadOnlyList<BpmChange> bpmChanges)
+    {
+        if (seconds <= 0d) return 0d;
+
+        var ordered = bpmChanges.OrderBy(c => c.Beat).ToList();
+        if (ordered.Count == 0) return seconds / 60d * 120d;
+
+        var beat = 0d;
+        var currentBpm = ordered[0].Bpm;
+        var lastBeat = 0d;
+        var elapsed = 0d;
+
+        foreach (var change in ordered)
+        {
+            var beatsInSegment = change.Beat - lastBeat;
+            var secondsInSegment = beatsInSegment / currentBpm * 60d;
+
+            if (elapsed + secondsInSegment >= seconds)
+                break;
+
+            elapsed += secondsInSegment;
+            beat = change.Beat;
+            lastBeat = change.Beat;
+            currentBpm = change.Bpm;
+        }
+
+        beat += (seconds - elapsed) / 60d * currentBpm;
+        return beat;
+    }
+
+    private void DrawLaneBackgrounds(ICanvas canvas, RectF dirtyRect, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount)
     {
         float x = laneGap;
         for (var lane = 0; lane < laneCount; lane++)
@@ -393,7 +461,7 @@ public sealed class NoteFieldDrawable : IDrawable
         canvas.DrawLine(0f, receptorY + 22f, dirtyRect.Width, receptorY + 22f);
     }
 
-    private void DrawHoldBodies(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount)
+    private void DrawHoldBodies(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount, double scrollWindowSeconds)
     {
         float x = laneGap;
         var travelHeight = fieldBottom - receptorY - 18f;
@@ -402,8 +470,6 @@ public sealed class NoteFieldDrawable : IDrawable
         {
             float width = actualWidths[lane];
             var centerX = x + width / 2f;
-
-            // Lane color is determined by position within the 5-lane pad pattern
             var laneColorIndex = lane % 5;
 
             var holdStarts = _engine.Notes.Where(n => n.Lane == lane && n.Type == NoteType.HoldStart).ToList();
@@ -422,12 +488,8 @@ public sealed class NoteFieldDrawable : IDrawable
                 if (!isActiveHold && !isUpcomingHold) continue;
                 if (endDelta < -PhoenixScoring.GetBadWindow(JudgmentDifficulty.Standard)) continue;
 
-                var actualScrollWindow = IsLandscapeMode ?
-                    3.0 / ScrollSpeedMultiplier :
-                    2.2 / ScrollSpeedMultiplier;
-
-                var startNormalized = (float)(startDelta / actualScrollWindow);
-                var endNormalized = (float)(endDelta / actualScrollWindow);
+                var startNormalized = (float)(startDelta / scrollWindowSeconds);
+                var endNormalized = (float)(endDelta / scrollWindowSeconds);
 
                 float visibleStartY, visibleEndY;
 
@@ -487,6 +549,71 @@ public sealed class NoteFieldDrawable : IDrawable
                 canvas.RestoreState();
             }
 
+            x += width + laneGap;
+        }
+    }
+
+    private void DrawNotes(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount, double scrollWindowSeconds)
+    {
+        float x = laneGap;
+        var travelHeight = fieldBottom - receptorY - 18f;
+
+        for (var lane = 0; lane < laneCount; lane++)
+        {
+            float width = actualWidths[lane];
+            var centerX = x + width / 2f;
+            var laneShapeIndex = lane % 5;
+
+            foreach (var note in _engine.Notes.Where(n => n.Lane == lane && !n.Consumed))
+            {
+                var deltaSeconds = note.TimeSeconds - _engine.CurrentTimeSeconds;
+
+                if (deltaSeconds < -PhoenixScoring.GetBadWindow(_engine.JudgmentDifficulty) || deltaSeconds > scrollWindowSeconds)
+                    continue;
+
+                var normalized = (float)(deltaSeconds / scrollWindowSeconds);
+                var y = receptorY + normalized * travelHeight;
+
+                float size;
+                if (IsLandscapeMode)
+                    size = MathF.Min(width * 0.75f, 35f);
+                else
+                    size = MathF.Min(width * 0.80f, 44f);
+
+                canvas.SaveState();
+                canvas.Translate(centerX, y);
+
+                switch (note.Type)
+                {
+                    case NoteType.Tap:
+                        DrawNoteShape(canvas, laneShapeIndex, size, LaneColors[laneShapeIndex]);
+                        break;
+
+                    case NoteType.HoldStart:
+                        DrawNoteShape(canvas, laneShapeIndex, size * 1.1f, LaneColors[laneShapeIndex]);
+                        if (ShowNoteBorders)
+                        {
+                            canvas.StrokeColor = Colors.White;
+                            canvas.StrokeSize = 3f;
+                            if (laneShapeIndex == 2)
+                                canvas.DrawRectangle(-size * 0.6f, -size * 0.6f, size * 1.2f, size * 1.2f);
+                            else
+                                DrawDiagonalArrow(canvas, laneShapeIndex, size * 1.2f, strokeOnly: true);
+                        }
+                        break;
+
+                    case NoteType.HoldEnd:
+                        DrawNoteShape(canvas, laneShapeIndex, size, LaneColors[laneShapeIndex].WithAlpha(0.8f));
+                        break;
+
+                    case NoteType.HoldBody:
+                        canvas.FillColor = LaneColors[laneShapeIndex].WithAlpha(0.6f);
+                        canvas.FillEllipse(-size * 0.2f, -size * 0.2f, size * 0.4f, size * 0.4f);
+                        break;
+                }
+
+                canvas.RestoreState();
+            }
             x += width + laneGap;
         }
     }
@@ -661,7 +788,6 @@ public sealed class NoteFieldDrawable : IDrawable
             canvas.Alpha = 1f;
             canvas.DrawImage(gray, -size / 2f, -size / 2f, size, size);
             canvas.Alpha = 1f;
-
             canvas.RestoreState();
 
             if (ShowNoteBorders)
@@ -729,88 +855,14 @@ public sealed class NoteFieldDrawable : IDrawable
         }
     }
 
-    private void DrawNotes(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount)
-    {
-        float x = laneGap;
-        var travelHeight = fieldBottom - receptorY - 18f;
-
-        var actualScrollWindow = IsLandscapeMode ?
-            3.0 / ScrollSpeedMultiplier :
-            2.2 / ScrollSpeedMultiplier;
-
-        for (var lane = 0; lane < laneCount; lane++)
-        {
-            float width = actualWidths[lane];
-            var centerX = x + width / 2f;
-
-            // Shape/color index is always within the 5-lane pattern
-            var laneShapeIndex = lane % 5;
-
-            foreach (var note in _engine.Notes.Where(n => n.Lane == lane && !n.Consumed))
-            {
-                var deltaSeconds = note.TimeSeconds - _engine.CurrentTimeSeconds;
-
-                if (deltaSeconds < -PhoenixScoring.GetBadWindow(_engine.JudgmentDifficulty) || deltaSeconds > actualScrollWindow)
-                    continue;
-
-                var normalized = (float)(deltaSeconds / actualScrollWindow);
-                var y = receptorY + normalized * travelHeight;
-
-                float size;
-                if (IsLandscapeMode)
-                    size = MathF.Min(width * 0.75f, 35f);
-                else
-                    size = MathF.Min(width * 0.80f, 44f);
-
-                canvas.SaveState();
-                canvas.Translate(centerX, y);
-
-                switch (note.Type)
-                {
-                    case NoteType.Tap:
-                        DrawNoteShape(canvas, laneShapeIndex, size, LaneColors[laneShapeIndex]);
-                        break;
-
-                    case NoteType.HoldStart:
-                        DrawNoteShape(canvas, laneShapeIndex, size * 1.1f, LaneColors[laneShapeIndex]);
-                        if (ShowNoteBorders)
-                        {
-                            canvas.StrokeColor = Colors.White;
-                            canvas.StrokeSize = 3f;
-                            if (laneShapeIndex == 2)
-                                canvas.DrawRectangle(-size * 0.6f, -size * 0.6f, size * 1.2f, size * 1.2f);
-                            else
-                                DrawDiagonalArrow(canvas, laneShapeIndex, size * 1.2f, strokeOnly: true);
-                        }
-                        break;
-
-                    case NoteType.HoldEnd:
-                        DrawNoteShape(canvas, laneShapeIndex, size, LaneColors[laneShapeIndex].WithAlpha(0.8f));
-                        break;
-
-                    case NoteType.HoldBody:
-                        canvas.FillColor = LaneColors[laneShapeIndex].WithAlpha(0.6f);
-                        canvas.FillEllipse(-size * 0.2f, -size * 0.2f, size * 0.4f, size * 0.4f);
-                        break;
-                }
-
-                canvas.RestoreState();
-            }
-            x += width + laneGap;
-        }
-    }
-
     private void DrawNoteShape(ICanvas canvas, int lane, float size, Color color)
     {
         if (lane == 2)
         {
-            // Center: use appropriate center image based on skin
             var centerImage = GetCenterImage();
             if (centerImage != null)
             {
                 canvas.DrawImage(centerImage, -size / 2f, -size / 2f, size, size);
-
-                // Add border only if debug flag is enabled
                 if (ShowNoteBorders)
                 {
                     canvas.StrokeColor = Colors.White.WithAlpha(0.80f);
@@ -820,10 +872,8 @@ public sealed class NoteFieldDrawable : IDrawable
             }
             else
             {
-                // Fallback to square
                 canvas.FillColor = color;
                 canvas.FillRectangle(-size / 2f, -size / 2f, size, size);
-
                 if (ShowNoteBorders)
                 {
                     canvas.StrokeColor = Colors.White.WithAlpha(0.80f);
@@ -834,7 +884,6 @@ public sealed class NoteFieldDrawable : IDrawable
         }
         else
         {
-            // Diagonal arrows using images
             DrawArrowNote(canvas, lane, size, color);
         }
     }
@@ -846,36 +895,20 @@ public sealed class NoteFieldDrawable : IDrawable
 
         switch (lane)
         {
-            case 0: // Bottom-left: blue arrow
-                image = GetBlueArrowImage();
-                break;
-            case 1: // Top-left: red arrow
-                image = GetRedArrowImage();
-                break;
-            case 3: // Top-right: red arrow rotated 90° clockwise
-                image = GetRedArrowImage();
-                rotation = 90f;
-                break;
-            case 4: // Bottom-right: blue arrow rotated -90°/270° clockwise
-                image = GetBlueArrowImage();
-                rotation = -90f;
-                break;
+            case 0: image = GetBlueArrowImage(); break;
+            case 1: image = GetRedArrowImage(); break;
+            case 3: image = GetRedArrowImage(); rotation = 90f; break;
+            case 4: image = GetBlueArrowImage(); rotation = -90f; break;
         }
 
         if (image != null)
         {
             canvas.SaveState();
-
             if (rotation != 0f)
-            {
                 canvas.Rotate(rotation);
-            }
-
             canvas.DrawImage(image, -size / 2f, -size / 2f, size, size);
-
             canvas.RestoreState();
 
-            // Add border only if debug flag is enabled
             if (ShowNoteBorders)
             {
                 canvas.StrokeColor = Colors.White.WithAlpha(0.80f);
@@ -885,15 +918,12 @@ public sealed class NoteFieldDrawable : IDrawable
         }
         else
         {
-            // Fallback to drawn arrows
             canvas.FillColor = color;
-
             if (ShowNoteBorders)
             {
                 canvas.StrokeColor = Colors.White.WithAlpha(0.80f);
                 canvas.StrokeSize = 2f;
             }
-
             DrawDiagonalArrow(canvas, lane, size);
         }
     }
@@ -902,11 +932,10 @@ public sealed class NoteFieldDrawable : IDrawable
     {
         var path = new PathF();
         var halfSize = size / 2f;
-        var arrowWidth = halfSize * 0.4f; // Stem thickness
 
         switch (lane)
         {
-            case 0: // ↙ Bottom-left diagonal arrow
+            case 0: // ↙ Bottom-left
                 path.MoveTo(halfSize * 0.3f, -halfSize * 0.8f);
                 path.LineTo(halfSize * 0.8f, -halfSize * 0.3f);
                 path.LineTo(halfSize * 0.5f, -halfSize * 0.1f);
@@ -920,7 +949,7 @@ public sealed class NoteFieldDrawable : IDrawable
                 path.Close();
                 break;
 
-            case 1: // ↖ Top-left diagonal arrow
+            case 1: // ↖ Top-left
                 path.MoveTo(halfSize * 0.3f, halfSize * 0.8f);
                 path.LineTo(halfSize * 0.8f, halfSize * 0.3f);
                 path.LineTo(halfSize * 0.5f, halfSize * 0.1f);
@@ -934,7 +963,7 @@ public sealed class NoteFieldDrawable : IDrawable
                 path.Close();
                 break;
 
-            case 3: // ↗ Top-right diagonal arrow
+            case 3: // ↗ Top-right
                 path.MoveTo(-halfSize * 0.3f, halfSize * 0.8f);
                 path.LineTo(-halfSize * 0.8f, halfSize * 0.3f);
                 path.LineTo(-halfSize * 0.5f, halfSize * 0.1f);
@@ -948,7 +977,7 @@ public sealed class NoteFieldDrawable : IDrawable
                 path.Close();
                 break;
 
-            case 4: // ↘ Bottom-right diagonal arrow
+            case 4: // ↘ Bottom-right
                 path.MoveTo(-halfSize * 0.3f, -halfSize * 0.8f);
                 path.LineTo(-halfSize * 0.8f, -halfSize * 0.3f);
                 path.LineTo(-halfSize * 0.5f, -halfSize * 0.1f);

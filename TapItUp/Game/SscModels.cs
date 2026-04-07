@@ -15,6 +15,11 @@ public sealed class SscSong
     /// starting at a given beat position. Defaults to 4 ticks/beat if absent.
     /// </summary>
     public IReadOnlyList<TickCount> TickCounts { get; init; } = [];
+    /// <summary>
+    /// Parsed from #SPEEDS. Each entry defines a visual scroll speed multiplier
+    /// starting at a given beat position. Defaults to 1.0 if absent.
+    /// </summary>
+    public IReadOnlyList<SpeedChange> SpeedChanges { get; init; } = [];
     public IReadOnlyList<SscChart> Charts { get; init; } = [];
     public string? SourcePath { get; init; }
     public string BaseUrl { get; set; } = string.Empty;
@@ -113,3 +118,9 @@ public sealed class HoldTick
     public required double TimeSeconds { get; init; }
     public bool Scored { get; set; }
 }
+
+/// <summary>
+/// A single segment from the #SPEEDS tag: from <see cref="Beat"/> onward,
+/// multiply the visual scroll speed by <see cref="Multiplier"/>.
+/// </summary>
+public readonly record struct SpeedChange(double Beat, double Multiplier);
