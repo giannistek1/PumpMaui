@@ -347,47 +347,40 @@ public sealed class NoteFieldDrawable : IDrawable
         canvas.FillColor = Color.FromArgb("#090212");
         canvas.FillRectangle(dirtyRect);
 
+        var isDouble = _engine.IsDoubleChart;
+        var laneCount = isDouble ? 10 : 5;
+
         // Adjust sizing for landscape mode - improved spacing
         var topMargin = IsLandscapeMode ? 8f : 24f;
-        var bottomMargin = IsLandscapeMode ? 12f : 26f; // Slightly more bottom margin for landscape
-        var receptorY = IsLandscapeMode ? 50f : 92f; // Move receptor down more for better travel distance
+        var bottomMargin = IsLandscapeMode ? 12f : 26f;
+        var receptorY = IsLandscapeMode ? 50f : 92f;
 
         // FORCE zero gap for both landscape and portrait so lanes touch (0 px)
         var laneGap = 0f;
 
-        // Balanced lane widths - smaller for better pattern recognition
-        float[] laneWidths = IsLandscapeMode ?
-            new[] { 1f, 1f, 1f, 1f, 1f } : // Smaller lanes for better pattern visibility
-            new[] { 1f, 1f, 1f, 1f, 1f };
-
-        float total = laneWidths.Sum();
-        // With laneGap == 0 this becomes dirtyRect.Width / total
-        float unit = (dirtyRect.Width - laneGap * 4f) / total;
-        float[] actualWidths = laneWidths.Select(w => w * unit).ToArray();
+        float unit = dirtyRect.Width / laneCount;
+        float[] actualWidths = Enumerable.Repeat(unit, laneCount).ToArray();
 
         var fieldBottom = dirtyRect.Height - bottomMargin;
 
-        DrawLaneBackgrounds(canvas, dirtyRect, actualWidths, laneGap, receptorY, fieldBottom);
-        DrawHoldBodies(canvas, actualWidths, laneGap, receptorY, fieldBottom); // Draw holds first
-        DrawReceptors(canvas, actualWidths, laneGap, receptorY);
-        DrawNotes(canvas, actualWidths, laneGap, receptorY, fieldBottom);
+        DrawLaneBackgrounds(canvas, dirtyRect, actualWidths, laneGap, receptorY, fieldBottom, laneCount, isDouble);
+        DrawHoldBodies(canvas, actualWidths, laneGap, receptorY, fieldBottom, laneCount);
+        DrawReceptors(canvas, actualWidths, laneGap, receptorY, laneCount);
+        DrawNotes(canvas, actualWidths, laneGap, receptorY, fieldBottom, laneCount);
         DrawFrame(canvas, dirtyRect, receptorY, topMargin);
         canvas.RestoreState();
     }
 
-    private void DrawLaneBackgrounds(ICanvas canvas, RectF dirtyRect, float[] actualWidths, float laneGap, float receptorY, float fieldBottom)
+    private void DrawLaneBackgrounds(ICanvas canvas, RectF dirtyRect, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount, bool isDouble)
     {
-        // Draw neutral lane backgrounds without lane-specific colors or borders
         float x = laneGap;
-        for (var lane = 0; lane < 5; lane++)
+        for (var lane = 0; lane < laneCount; lane++)
         {
             float width = actualWidths[lane];
 
-            // Neutral base for lane background (very dark)
             canvas.FillColor = Color.FromArgb("#0B0710");
             canvas.FillRoundedRectangle(x, 18f, width, fieldBottom - 6f, 18f);
 
-            // Subtle neutral overlay for the active travel area (low alpha)
             canvas.FillColor = Color.FromArgb("#0B0710").WithAlpha(0.04f);
             canvas.FillRoundedRectangle(x, receptorY - 16f, width, fieldBottom - receptorY + 18f, 18f);
 
@@ -400,17 +393,19 @@ public sealed class NoteFieldDrawable : IDrawable
         canvas.DrawLine(0f, receptorY + 22f, dirtyRect.Width, receptorY + 22f);
     }
 
-    private void DrawHoldBodies(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom)
+    private void DrawHoldBodies(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount)
     {
         float x = laneGap;
         var travelHeight = fieldBottom - receptorY - 18f;
 
-        for (var lane = 0; lane < 5; lane++)
+        for (var lane = 0; lane < laneCount; lane++)
         {
             float width = actualWidths[lane];
             var centerX = x + width / 2f;
 
-            // Find hold pairs for this lane - include both active holds and upcoming holds
+            // Lane color is determined by position within the 5-lane pad pattern
+            var laneColorIndex = lane % 5;
+
             var holdStarts = _engine.Notes.Where(n => n.Lane == lane && n.Type == NoteType.HoldStart).ToList();
 
             foreach (var holdStart in holdStarts)
@@ -421,69 +416,53 @@ public sealed class NoteFieldDrawable : IDrawable
                 var startDelta = holdStart.TimeSeconds - _engine.CurrentTimeSeconds;
                 var endDelta = holdEnd.TimeSeconds - _engine.CurrentTimeSeconds;
 
-                // For active holds (hold start is consumed but hold is still active)
                 bool isActiveHold = holdStart.Consumed && holdStart.IsHoldActive && !holdEnd.Consumed;
-
-                // For upcoming holds (hold start not yet consumed)
                 bool isUpcomingHold = !holdStart.Consumed;
 
-                // Skip if this hold is completely finished or not relevant
                 if (!isActiveHold && !isUpcomingHold) continue;
-                // Skip holds that have fully passed (use the widest possible bad window for culling)
                 if (endDelta < -PhoenixScoring.GetBadWindow(JudgmentDifficulty.Standard)) continue;
 
-                // Calculate actual scroll window based on multiplier (inverted relationship) - extended for landscape
                 var actualScrollWindow = IsLandscapeMode ?
-                    3.0 / ScrollSpeedMultiplier :  // Extended for landscape
-                    2.2 / ScrollSpeedMultiplier;   // Original for portrait
+                    3.0 / ScrollSpeedMultiplier :
+                    2.2 / ScrollSpeedMultiplier;
 
-                // Calculate positions
                 var startNormalized = (float)(startDelta / actualScrollWindow);
                 var endNormalized = (float)(endDelta / actualScrollWindow);
 
-                // For active holds, start drawing from the receptor line (current time)
                 float visibleStartY, visibleEndY;
 
                 if (isActiveHold)
                 {
-                    // Active hold: draw from receptor to hold end
                     visibleStartY = receptorY;
                     var endY = receptorY + endNormalized * travelHeight;
                     visibleEndY = Math.Min(endY, fieldBottom - 18f);
                 }
                 else
                 {
-                    // Upcoming hold: draw the full hold body
                     var startY = receptorY + startNormalized * travelHeight;
                     var endY = receptorY + endNormalized * travelHeight;
                     visibleStartY = Math.Max(startY, receptorY - 16f);
                     visibleEndY = Math.Min(endY, fieldBottom - 18f);
                 }
 
-                // Skip if hold would be invisible
                 if (visibleStartY >= visibleEndY) continue;
 
-                // Draw hold body with enhanced visual for active holds - thinner for landscape
-                var holdWidth = IsLandscapeMode ? width * 0.60f : width * 0.65f; // Thinner holds for landscape
+                var holdWidth = IsLandscapeMode ? width * 0.60f : width * 0.65f;
                 var isHoldCurrentlyActive = _engine.IsLaneHoldActive(lane);
 
-                // Different colors for active vs upcoming holds
                 Color bodyColor;
                 if (isActiveHold && isHoldCurrentlyActive)
                 {
-                    // Bright, pulsing color for currently held notes
                     var pulseIntensity = 0.8f + 0.2f * MathF.Sin((float)_engine.CurrentTimeSeconds * 8f);
-                    bodyColor = LaneColors[lane].WithAlpha(pulseIntensity);
+                    bodyColor = LaneColors[laneColorIndex].WithAlpha(pulseIntensity);
                 }
                 else if (isActiveHold)
                 {
-                    // Dimmer color for released but not finished holds
-                    bodyColor = LaneColors[lane].WithAlpha(0.4f);
+                    bodyColor = LaneColors[laneColorIndex].WithAlpha(0.4f);
                 }
                 else
                 {
-                    // Normal color for upcoming holds
-                    bodyColor = LaneColors[lane].WithAlpha(0.6f);
+                    bodyColor = LaneColors[laneColorIndex].WithAlpha(0.6f);
                 }
 
                 canvas.SaveState();
@@ -495,9 +474,8 @@ public sealed class NoteFieldDrawable : IDrawable
                     visibleEndY - visibleStartY,
                     4f);
 
-                // Draw hold edges with stronger outline for active holds
                 var edgeAlpha = isActiveHold && isHoldCurrentlyActive ? 1.0f : 0.8f;
-                canvas.StrokeColor = LaneColors[lane].WithAlpha(edgeAlpha);
+                canvas.StrokeColor = LaneColors[laneColorIndex].WithAlpha(edgeAlpha);
                 canvas.StrokeSize = isActiveHold && isHoldCurrentlyActive ? 3f : 2f;
                 canvas.DrawRoundedRectangle(
                     centerX - holdWidth / 2f,
@@ -513,11 +491,10 @@ public sealed class NoteFieldDrawable : IDrawable
         }
     }
 
-
-    private void DrawReceptors(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY)
+    private void DrawReceptors(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, int laneCount)
     {
         float x = laneGap;
-        for (var lane = 0; lane < 5; lane++)
+        for (var lane = 0; lane < laneCount; lane++)
         {
             float width = actualWidths[lane];
             var centerX = x + width / 2f;
@@ -537,6 +514,9 @@ public sealed class NoteFieldDrawable : IDrawable
             else
                 receptorSize = MathF.Min(width * 0.80f, 44f);
 
+            // Shape/color index is always within the 5-lane pattern
+            var laneShapeIndex = lane % 5;
+
             canvas.SaveState();
             canvas.Translate(centerX, receptorY);
 
@@ -544,21 +524,20 @@ public sealed class NoteFieldDrawable : IDrawable
             {
                 var glowSize = receptorSize * 1.3f;
                 canvas.FillColor = Colors.White.WithAlpha(0.06f);
-                if (lane == 2)
+                if (laneShapeIndex == 2)
                     canvas.FillRoundedRectangle(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize, 8f);
                 else
                     canvas.FillEllipse(-glowSize / 2f, -glowSize / 2f, glowSize, glowSize);
             }
 
-            // Star burst for Perfect / Great — drawn behind the receptor image
             var lastJudgment = _engine.GetLaneLastJudgment(lane);
             var isStarworthy = (lastJudgment == HitJudgment.Perfect || lastJudgment == HitJudgment.Great)
                                && flashAge >= 0d && flashAge <= 0.30d;
 
             if (isStarworthy)
-                DrawStarBurst(canvas, lane, receptorSize, flashAge, lastJudgment);
+                DrawStarBurst(canvas, laneShapeIndex, receptorSize, flashAge, lastJudgment);
 
-            DrawReceptorShape(canvas, lane, receptorSize, glow, isHoldActive);
+            DrawReceptorShape(canvas, laneShapeIndex, receptorSize, glow, isHoldActive);
 
             if (glow > 0f)
             {
@@ -568,7 +547,7 @@ public sealed class NoteFieldDrawable : IDrawable
                 canvas.SaveState();
                 canvas.FillColor = Color.FromArgb("#FFE45E").WithAlpha(yellowAlpha);
 
-                if (lane == 2)
+                if (laneShapeIndex == 2)
                 {
                     var haloSize = receptorSize * 1.2f;
                     canvas.FillRoundedRectangle(-haloSize / 2f, -haloSize / 2f, haloSize, haloSize, 8f);
@@ -696,7 +675,6 @@ public sealed class NoteFieldDrawable : IDrawable
         }
 
         // If no gray image found, fallback to colored receptor rendering
-        // using previous logic (images or drawn shapes)
         IImage? image = null;
         float fallbackRotation = 0f;
 
@@ -751,81 +729,67 @@ public sealed class NoteFieldDrawable : IDrawable
         }
     }
 
-    private void DrawNotes(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom)
+    private void DrawNotes(ICanvas canvas, float[] actualWidths, float laneGap, float receptorY, float fieldBottom, int laneCount)
     {
         float x = laneGap;
         var travelHeight = fieldBottom - receptorY - 18f;
 
-        // Calculate the actual scroll window based on the speed multiplier - extended for landscape
         var actualScrollWindow = IsLandscapeMode ?
-            3.0 / ScrollSpeedMultiplier :  // Extended scroll window for landscape - more time to read patterns
-            2.2 / ScrollSpeedMultiplier;   // Original for portrait
+            3.0 / ScrollSpeedMultiplier :
+            2.2 / ScrollSpeedMultiplier;
 
-        for (var lane = 0; lane < 5; lane++)
+        for (var lane = 0; lane < laneCount; lane++)
         {
             float width = actualWidths[lane];
             var centerX = x + width / 2f;
+
+            // Shape/color index is always within the 5-lane pattern
+            var laneShapeIndex = lane % 5;
+
             foreach (var note in _engine.Notes.Where(n => n.Lane == lane && !n.Consumed))
             {
                 var deltaSeconds = note.TimeSeconds - _engine.CurrentTimeSeconds;
 
-                // Fixed: Use actualScrollWindow for the visibility check
                 if (deltaSeconds < -PhoenixScoring.GetBadWindow(_engine.JudgmentDifficulty) || deltaSeconds > actualScrollWindow)
                     continue;
 
                 var normalized = (float)(deltaSeconds / actualScrollWindow);
                 var y = receptorY + normalized * travelHeight;
 
-                // Smaller notes for landscape to improve pattern recognition
                 float size;
                 if (IsLandscapeMode)
-                {
-                    // Landscape: smaller notes for better pattern visibility and spacing
                     size = MathF.Min(width * 0.75f, 35f);
-                }
                 else
-                {
-                    // Portrait: 80% width with max 44f
                     size = MathF.Min(width * 0.80f, 44f);
-                }
 
                 canvas.SaveState();
                 canvas.Translate(centerX, y);
 
-                // Different rendering based on note type
                 switch (note.Type)
                 {
                     case NoteType.Tap:
-                        DrawNoteShape(canvas, lane, size, LaneColors[lane]);
+                        DrawNoteShape(canvas, laneShapeIndex, size, LaneColors[laneShapeIndex]);
                         break;
 
                     case NoteType.HoldStart:
-                        // Hold start - brighter and slightly larger
-                        DrawNoteShape(canvas, lane, size * 1.1f, LaneColors[lane]);
-                        // Add hold indicator only if borders are enabled
+                        DrawNoteShape(canvas, laneShapeIndex, size * 1.1f, LaneColors[laneShapeIndex]);
                         if (ShowNoteBorders)
                         {
                             canvas.StrokeColor = Colors.White;
                             canvas.StrokeSize = 3f;
-                            if (lane == 2)
-                            {
+                            if (laneShapeIndex == 2)
                                 canvas.DrawRectangle(-size * 0.6f, -size * 0.6f, size * 1.2f, size * 1.2f);
-                            }
                             else
-                            {
-                                DrawDiagonalArrow(canvas, lane, size * 1.2f, strokeOnly: true);
-                            }
+                                DrawDiagonalArrow(canvas, laneShapeIndex, size * 1.2f, strokeOnly: true);
                         }
                         break;
 
                     case NoteType.HoldEnd:
-                        // Hold end - dimmer
-                        DrawNoteShape(canvas, lane, size, LaneColors[lane].WithAlpha(0.8f));
+                        DrawNoteShape(canvas, laneShapeIndex, size, LaneColors[laneShapeIndex].WithAlpha(0.8f));
                         break;
 
                     case NoteType.HoldBody:
-                        // Hold body - small dot
-                        canvas.FillColor = LaneColors[lane].WithAlpha(0.6f);
+                        canvas.FillColor = LaneColors[laneShapeIndex].WithAlpha(0.6f);
                         canvas.FillEllipse(-size * 0.2f, -size * 0.2f, size * 0.4f, size * 0.4f);
                         break;
                 }
@@ -943,13 +907,11 @@ public sealed class NoteFieldDrawable : IDrawable
         switch (lane)
         {
             case 0: // ↙ Bottom-left diagonal arrow
-                // Stem going from top-right to bottom-left
                 path.MoveTo(halfSize * 0.3f, -halfSize * 0.8f);
                 path.LineTo(halfSize * 0.8f, -halfSize * 0.3f);
                 path.LineTo(halfSize * 0.5f, -halfSize * 0.1f);
                 path.LineTo(-halfSize * 0.1f, halfSize * 0.5f);
                 path.LineTo(-halfSize * 0.3f, halfSize * 0.8f);
-                // Arrow head pointing down-left
                 path.LineTo(-halfSize, halfSize * 0.5f);
                 path.LineTo(-halfSize * 0.5f, halfSize);
                 path.LineTo(-halfSize * 0.8f, halfSize * 0.3f);
@@ -958,14 +920,12 @@ public sealed class NoteFieldDrawable : IDrawable
                 path.Close();
                 break;
 
-            case 1: // ↖ Top-left diagonal arrow  
-                // Stem going from bottom-right to top-left
+            case 1: // ↖ Top-left diagonal arrow
                 path.MoveTo(halfSize * 0.3f, halfSize * 0.8f);
                 path.LineTo(halfSize * 0.8f, halfSize * 0.3f);
                 path.LineTo(halfSize * 0.5f, halfSize * 0.1f);
                 path.LineTo(-halfSize * 0.1f, -halfSize * 0.5f);
                 path.LineTo(-halfSize * 0.3f, -halfSize * 0.8f);
-                // Arrow head pointing up-left
                 path.LineTo(-halfSize, -halfSize * 0.5f);
                 path.LineTo(-halfSize * 0.5f, -halfSize);
                 path.LineTo(-halfSize * 0.8f, -halfSize * 0.3f);
@@ -975,13 +935,11 @@ public sealed class NoteFieldDrawable : IDrawable
                 break;
 
             case 3: // ↗ Top-right diagonal arrow
-                // Stem going from bottom-left to top-right
                 path.MoveTo(-halfSize * 0.3f, halfSize * 0.8f);
                 path.LineTo(-halfSize * 0.8f, halfSize * 0.3f);
                 path.LineTo(-halfSize * 0.5f, halfSize * 0.1f);
                 path.LineTo(halfSize * 0.1f, -halfSize * 0.5f);
                 path.LineTo(halfSize * 0.3f, -halfSize * 0.8f);
-                // Arrow head pointing up-right
                 path.LineTo(halfSize, -halfSize * 0.5f);
                 path.LineTo(halfSize * 0.5f, -halfSize);
                 path.LineTo(halfSize * 0.8f, -halfSize * 0.3f);
@@ -991,13 +949,11 @@ public sealed class NoteFieldDrawable : IDrawable
                 break;
 
             case 4: // ↘ Bottom-right diagonal arrow
-                // Stem going from top-left to bottom-right
                 path.MoveTo(-halfSize * 0.3f, -halfSize * 0.8f);
                 path.LineTo(-halfSize * 0.8f, -halfSize * 0.3f);
                 path.LineTo(-halfSize * 0.5f, -halfSize * 0.1f);
                 path.LineTo(halfSize * 0.1f, halfSize * 0.5f);
                 path.LineTo(halfSize * 0.3f, halfSize * 0.8f);
-                // Arrow head pointing down-right
                 path.LineTo(halfSize, halfSize * 0.5f);
                 path.LineTo(halfSize * 0.5f, halfSize);
                 path.LineTo(halfSize * 0.8f, halfSize * 0.3f);
@@ -1014,9 +970,6 @@ public sealed class NoteFieldDrawable : IDrawable
         else
         {
             canvas.FillPath(path);
-            // Only draw the path outline if ShowNoteBorders would be true
-            // Since this is a static method, we can't access the instance variable
-            // The calling method should handle the stroke
             if (!strokeOnly)
             {
                 canvas.DrawPath(path);
@@ -1032,21 +985,15 @@ public sealed class NoteFieldDrawable : IDrawable
 
         canvas.FontColor = Colors.White.WithAlpha(0.90f);
         canvas.FontSize = 14f;
-        //canvas.DrawString("PHOENIX STYLE NOTE FIELD", 12f, 10f, dirtyRect.Width - 24f, 18f, HorizontalAlignment.Left, VerticalAlignment.Center);
-        //canvas.DrawString("JUDGE", 12f, receptorY - 6f, dirtyRect.Width - 24f, 16f, HorizontalAlignment.Left, VerticalAlignment.Top);
     }
+
     /// <summary>
-    /// Draws a bright lens-flare style cross-light effect (two lines crossing at 90°,
-    /// rotated 45° to form an ×) centred at the current canvas origin.
-    /// Always white/bright regardless of judgment type.
-    /// Expands outward and fades over 250 ms.
+    /// Draws a bright lens-flare style cross-light effect centred at the current canvas origin.
     /// </summary>
     private static void DrawStarBurst(ICanvas canvas, int lane, float receptorSize, double flashAge, HitJudgment judgment)
     {
-        // t: 0 = just hit, 1 = fully faded
         var t = (float)(flashAge / 0.25d);
 
-        // Overall alpha: full brightness at start, gone by end
         var alpha = Math.Clamp(1.0f - t, 0f, 1f);
         // Arm length: starts at 0.65× receptor size, expands to 1.5× (was 1.0× → 2.8×)
         var armLength = receptorSize * (0.65f + 0.85f * t);

@@ -29,13 +29,17 @@ public sealed class RhythmGameEngine
         .GetValues<HitJudgment>()
         .ToDictionary(judgment => judgment, _ => 0);
 
-    private readonly double[] _laneFlashTimes = [-10d, -10d, -10d, -10d, -10d];
-    private readonly bool[] _laneHoldActive = [false, false, false, false, false];
-    private readonly bool[] _lanePressed = [false, false, false, false, false];
+    // 10 lanes to support pump-double (lanes 0-4 = left pad, lanes 5-9 = right pad)
+    private readonly double[] _laneFlashTimes = [-10d, -10d, -10d, -10d, -10d, -10d, -10d, -10d, -10d, -10d];
+    private readonly bool[] _laneHoldActive = [false, false, false, false, false, false, false, false, false, false];
+    private readonly bool[] _lanePressed = [false, false, false, false, false, false, false, false, false, false];
 
     // Tracks the most recent judgment on each lane for per-lane visual feedback.
     private readonly HitJudgment[] _laneLastJudgment =
-        [HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss];
+    [
+        HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss,
+        HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss, HitJudgment.Miss
+    ];
 
     private List<PlayableNote> _notes = [];
     private List<HoldTick> _holdTicks = [];
@@ -68,6 +72,11 @@ public sealed class RhythmGameEngine
     public bool FullCombo => _counts[HitJudgment.Bad] == 0 && _counts[HitJudgment.Miss] == 0;
 
     /// <summary>
+    /// True when the loaded chart is a pump-double or dance-double chart (10 lanes).
+    /// </summary>
+    public bool IsDoubleChart { get; private set; }
+
+    /// <summary>
     /// Controls which judgement-timing-window preset is used. Can be changed before or after Load().
     /// Defaults to Standard.
     /// </summary>
@@ -89,6 +98,10 @@ public sealed class RhythmGameEngine
     {
         Song = song;
         Chart = chart;
+        IsDoubleChart =
+            chart.StepType.Equals("pump-double", StringComparison.OrdinalIgnoreCase) ||
+            chart.StepType.Equals("dance-double", StringComparison.OrdinalIgnoreCase);
+
         _notes = chart.Notes.Select(note => new PlayableNote
         {
             Lane = note.Lane,
@@ -567,16 +580,12 @@ public sealed class RhythmGameEngine
     /// <summary>
     /// Returns the most recent <see cref="HitJudgment"/> registered on <paramref name="lane"/>,
     /// or <see cref="HitJudgment.Miss"/> if the flash window (250 ms) has already expired.
-    /// This ensures the star-burst effect only appears on the frame window immediately
-    /// after a real note hit — a second press on an empty lane reads Miss and shows nothing.
     /// </summary>
     public HitJudgment GetLaneLastJudgment(int lane)
     {
         if (lane < 0 || lane >= _laneLastJudgment.Length)
             return HitJudgment.Miss;
 
-        // Expire the stored judgment once the drawable's burst window has passed.
-        // 0.25 s matches DrawStarBurst's 250 ms fade duration.
         const double burstWindowSeconds = 0.25d;
         if (CurrentTimeSeconds - _laneFlashTimes[lane] > burstWindowSeconds)
             _laneLastJudgment[lane] = HitJudgment.Miss;

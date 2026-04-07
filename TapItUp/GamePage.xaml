@@ -26,7 +26,7 @@
                           WidthRequest="210" 
                           HorizontalOptions="Center"
                           VerticalOptions="Start"
-                          HeightRequest="1200" />
+                          HeightRequest="1000" />
 
             <!-- Exit button positioned at top right -->
             <Button Text="✕"
@@ -159,7 +159,7 @@
                 <!-- Note field with quarter width - extended downward beyond visible area -->
                 <GraphicsView x:Name="LandscapeNoteFieldView"
                               WidthRequest="180"
-                              HeightRequest="900"
+                              HeightRequest="800"
                               HorizontalOptions="Center"
                               VerticalOptions="Start" />
 

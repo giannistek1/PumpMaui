@@ -231,6 +231,11 @@ public partial class GamePage : ContentPage
 
             _engine.Load(_song, _chart);
 
+            // Rebuild landscape pads now that IsDoubleChart is known, so the right
+            // pad gets laneOffset = 5 when playing a double chart.
+            BuildPad(LandscapeLeftPad);
+            BuildPad(LandscapeRightPad);
+
             BackgroundPreview.Source = TryCreateBackground(_song);
             LandscapeBackgroundPreview.Source = BackgroundPreview.Source;
 
@@ -782,12 +787,10 @@ public partial class GamePage : ContentPage
         grid.ColumnDefinitions.Clear();
         grid.Children.Clear();
 
-        // Check if this is a landscape pad
         var isLandscapePad = grid == LandscapeLeftPad || grid == LandscapeRightPad;
 
         if (isLandscapePad)
         {
-            // For landscape pads, use Auto sizing for tight spacing
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
@@ -795,17 +798,14 @@ public partial class GamePage : ContentPage
             grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
             grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
 
-            // Minimal spacing for tight button layout
             grid.RowSpacing = 4;
             grid.ColumnSpacing = 4;
 
-            // Center the compact grid in its container
             grid.HorizontalOptions = LayoutOptions.Center;
-            grid.VerticalOptions = LayoutOptions.End; // Overrides xaml
+            grid.VerticalOptions = LayoutOptions.End;
         }
         else
         {
-            // Portrait mode - keep original Star sizing
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
@@ -814,41 +814,47 @@ public partial class GamePage : ContentPage
             grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
         }
 
-        // ALL pads get the same 5 buttons in diamond formation
-        // Players can use either pad to hit any lane
-        AddPadButton(grid, lane: 1, row: 0, column: 0); // Top Left
-        AddPadButton(grid, lane: 3, row: 0, column: 2); // Top Right
-        AddPadButton(grid, lane: 2, row: 1, column: 1); // Center
-        AddPadButton(grid, lane: 0, row: 2, column: 0); // Bottom Left
-        AddPadButton(grid, lane: 4, row: 2, column: 2); // Bottom Right
+        // For a double chart the left pad drives lanes 0-4 and right pad drives lanes 5-9.
+        // For a single chart both pads continue to drive lanes 0-4 (same as before).
+        var isRightPad = grid == LandscapeRightPad;
+        var isDouble = _engine.IsDoubleChart;
+        var laneOffset = isRightPad && isDouble ? 5 : 0;
+
+        // Diamond formation: positions are the same for both pads; only the lane index shifts.
+        AddPadButton(grid, lane: laneOffset + 1, row: 0, column: 0); // Top Left
+        AddPadButton(grid, lane: laneOffset + 3, row: 0, column: 2); // Top Right
+        AddPadButton(grid, lane: laneOffset + 2, row: 1, column: 1); // Center
+        AddPadButton(grid, lane: laneOffset + 0, row: 2, column: 0); // Bottom Left
+        AddPadButton(grid, lane: laneOffset + 4, row: 2, column: 2); // Bottom Right
     }
 
     private void AddPadButton(Grid grid, int lane, int row, int column)
     {
-        var isCenter = lane == 2;
         var isPortraitPad = grid == PortraitPad;
         var isLandscapePad = grid == LandscapeLeftPad || grid == LandscapeRightPad;
 
+        // Lane color and glyph always follow the 5-lane pad pattern (0-4).
+        // For double charts lanes 5-9 mirror the same colors as lanes 0-4.
+        var laneColorIndex = lane % 5;
+
         if (isLandscapePad)
         {
-            // For landscape buttons, create compact square buttons with fixed sizes
             var buttonSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 74 : 74;
 
             var button = new Button
             {
-                Text = string.Empty, // No text for landscape buttons
+                Text = string.Empty,
                 FontAttributes = FontAttributes.Bold,
-                BackgroundColor = LaneColors[lane].WithAlpha(0.4f),
+                BackgroundColor = LaneColors[laneColorIndex].WithAlpha(0.4f),
                 TextColor = Colors.Black,
                 CornerRadius = 2,
-                Margin = new Thickness(0), // Minimal margin for tight spacing
+                Margin = new Thickness(0),
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.End,
                 WidthRequest = buttonSize,
                 HeightRequest = buttonSize
             };
 
-            // FIXED: Use Pressed/Released events with proper null check
             button.Pressed += (_, _) =>
             {
                 System.Diagnostics.Debug.WriteLine($"🎮 UI Button Pressed event fired for lane {lane}");
@@ -865,31 +871,30 @@ public partial class GamePage : ContentPage
             return;
         }
 
-        // Portrait pad logic - all buttons same size now
+        // Portrait pad logic
         var baseSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
-            ? 75  // Same size for all buttons on mobile
-            : 90; // Same size for all buttons on desktop
+            ? 75
+            : 90;
 
         var baseFontSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
-            ? 35  // Same font size for all buttons on mobile
-            : 40; // Same font size for all buttons on desktop
+            ? 35
+            : 40;
 
         var portraitButton = new Button
         {
-            Text = LaneGlyphs[lane], // Keep text for portrait buttons
+            Text = LaneGlyphs[laneColorIndex],
             FontSize = baseFontSize,
             FontAttributes = FontAttributes.Bold,
-            BackgroundColor = LaneColors[lane].WithAlpha(0.4f), // Transparent for portrait
+            BackgroundColor = LaneColors[laneColorIndex].WithAlpha(0.4f),
             TextColor = Colors.White,
             CornerRadius = 2,
-            Margin = new Thickness(0), // Keep original portrait margin
+            Margin = new Thickness(0),
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
             WidthRequest = baseSize,
             HeightRequest = baseSize
         };
 
-        // FIXED: Use Pressed/Released events with proper null check
         portraitButton.Pressed += (_, _) =>
         {
             System.Diagnostics.Debug.WriteLine($"🎮 UI Button Pressed event fired for lane {lane}");

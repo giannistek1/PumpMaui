@@ -203,6 +203,14 @@ public static class SscParser
         }
 
         var description = chartTags.GetValueOrDefault("DESCRIPTION") ?? "";
+
+        // Skip UCS (user-created) charts — only keep official Pump It Up charts
+        if (description.Contains("UCS", StringComparison.OrdinalIgnoreCase))
+        {
+            System.Diagnostics.Debug.WriteLine($"   ⏭️ Skipping UCS chart: '{description}'");
+            return null;
+        }
+
         var difficulty = chartTags.GetValueOrDefault("DIFFICULTY") ?? "Beginner";
         var meter = int.TryParse(chartTags.GetValueOrDefault("METER"), out var m) ? m : 1;
 
