@@ -259,13 +259,16 @@ public static class SscParser
             return null;
         }
 
+        var chartSpeedChanges = ParseSpeedString(chartTags.GetValueOrDefault("SPEEDS"));
+
         return new SscChart
         {
             StepType = stepType,
             Description = description,
             Difficulty = difficulty,
             Meter = meter,
-            Notes = notes
+            Notes = notes,
+            SpeedChanges = chartSpeedChanges
         };
     }
 

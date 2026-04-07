@@ -23,7 +23,7 @@ public partial class GamePage : ContentPage
     private NoteFieldDrawable? _landscapeNoteFieldDrawable; // Add this line
     private readonly Stopwatch _playbackTimer = new();
     private double _playbackStartOffsetSeconds;
-    private double _notesDisplayOffsetSeconds = 0.4; // positive = delay notes by this many seconds (tweakable)
+    private double _notesDisplayOffsetSeconds = 0; // positive = delay notes by this many seconds (tweakable)
     private SscSong? _song;
     private SscChart? _chart;
     private bool _isGameLoaded;

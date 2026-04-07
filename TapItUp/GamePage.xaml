@@ -14,19 +14,25 @@
               Padding="{OnPlatform Default=12, iOS=6, Android=6}"
               IsClippedToBounds="True">
 
-            <!-- Background -->
+            <!-- Background fills the full portrait area, behind everything else -->
             <Image x:Name="BackgroundPreview"
                    Aspect="AspectFill"
-                   Opacity="0.3"
+                   Opacity="0.15"
                    HorizontalOptions="FillAndExpand"
                    VerticalOptions="FillAndExpand" />
 
-            <!-- Fixed width note field centered - extended downward beyond visible area -->
-            <GraphicsView x:Name="NoteFieldView"
-                          WidthRequest="210" 
-                          HorizontalOptions="Center"
-                          VerticalOptions="Start"
-                          HeightRequest="640" />
+            <!-- Note field — NoteFieldDrawable draws its own opaque dark background,
+                 so the song background shows only in the surrounding area -->
+            <Grid HorizontalOptions="Center"
+                  VerticalOptions="Start"
+                  WidthRequest="210"
+                  HeightRequest="640"
+                  IsClippedToBounds="True">
+
+                <GraphicsView x:Name="NoteFieldView"
+                              HorizontalOptions="Fill"
+                              VerticalOptions="Fill" />
+            </Grid>
 
             <!-- Exit button positioned at top right -->
             <Button Text="✕"
@@ -41,21 +47,20 @@
                     VerticalOptions="Start"
                     Margin="0,10,10,0" />
 
-            <!-- Portrait Pad - More transparent and positioned lower -->
+            <!-- Portrait Pad -->
             <Grid x:Name="PortraitPad"
                   HorizontalOptions="Center"
                   VerticalOptions="End"
                   Margin="{OnPlatform Default='0,0,0,10', iOS='0,0,0,5', Android='0,0,0,5'}" />
 
-            <!-- Center Overlay - Judgment and Combo (Fixed Position with Margin) -->
+            <!-- Center Overlay - Judgment and Combo -->
             <StackLayout x:Name="CenterOverlayPortrait"
                          HorizontalOptions="Center"
                          VerticalOptions="Center"
                          Margin="0,80,0,0"
                          Spacing="4"
                          IsVisible="True">
-                
-                <!-- Judgment Text (Fixed at top) -->
+
                 <Label x:Name="CenterJudgmentLabel"
                        Text="READY"
                        FontSize="{OnPlatform Default=40, iOS=32, Android=32}"
@@ -65,8 +70,7 @@
                        VerticalTextAlignment="Center"
                        Opacity="0.9"
                        Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
-                
-                <!-- Combo Text - ABOVE combo number (Only visible when combo >= 4) -->
+
                 <Label x:Name="CenterComboTextLabel"
                        Text="COMBO"
                        FontSize="{OnPlatform Default=20, iOS=16, Android=16}"
@@ -77,8 +81,7 @@
                        IsVisible="False"
                        Opacity="0.8"
                        Shadow="{Shadow Brush=Black, Offset='1,1', Radius=4, Opacity=0.8}" />
-                
-                <!-- Combo Number - BELOW combo text (Only visible when combo >= 4) -->
+
                 <Label x:Name="CenterComboNumberLabel"
                        Text="4"
                        FontSize="{OnPlatform Default=42, iOS=36, Android=36}"
@@ -91,7 +94,7 @@
                        Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
             </StackLayout>
 
-            <!-- Stats overlay in portrait - positioned at bottom -->
+            <!-- Stats overlay -->
             <Label x:Name="PortraitCountsLabel"
                    Text="PERFECT 0 • GREAT 0 • GOOD 0 • BAD 0 • MISS 0"
                    FontSize="{OnPlatform Default=10, iOS=8, Android=8}"

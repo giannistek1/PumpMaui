@@ -384,7 +384,8 @@ public sealed class NoteFieldDrawable : IDrawable
     /// </summary>
     private double GetActiveSongSpeedMultiplier()
     {
-        var speedChanges = _engine.Song?.SpeedChanges;
+        // #SPEEDS is a per-chart tag in .ssc files — read from the loaded chart.
+        var speedChanges = _engine.Chart?.SpeedChanges;
         if (speedChanges == null || speedChanges.Count == 0)
             return 1.0;
 
@@ -402,6 +403,8 @@ public sealed class NoteFieldDrawable : IDrawable
             else
                 break;
         }
+
+        System.Diagnostics.Debug.WriteLine($"🎵 #SPEEDS active multiplier: {active:F4} at beat {currentBeat:F2}");
         return active;
     }
 

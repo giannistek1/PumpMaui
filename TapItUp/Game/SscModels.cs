@@ -38,12 +38,17 @@ public sealed class SscChart
     public string Difficulty { get; init; } = string.Empty;
     public int Meter { get; init; }
     public IReadOnlyList<ChartNote> Notes { get; init; } = [];
+    /// <summary>
+    /// Parsed from the per-chart #SPEEDS tag. Each entry defines a visual scroll
+    /// speed multiplier starting at a given beat. Empty when the tag is absent.
+    /// </summary>
+    public IReadOnlyList<SpeedChange> SpeedChanges { get; init; } = [];
 
     public double LastNoteTimeSeconds => Notes.Count == 0 ? 0d : Notes.Max(note => note.TimeSeconds);
 
     public override string ToString()
     {
-        var description = string.IsNullOrWhiteSpace(Description) ? string.Empty : $" • {Description}";
+        var description = string.IsNullOrWhiteSpace(Description) ? string.Empty : $" — {Description}";
         return $"{Difficulty} {Meter}{description}".Trim();
     }
 }
