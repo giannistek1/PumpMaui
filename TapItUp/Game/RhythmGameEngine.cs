@@ -90,6 +90,14 @@ public sealed class RhythmGameEngine
 
     private int _chordGroupCount;
 
+    // ── Live BPM ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The BPM active at <see cref="CurrentTimeSeconds"/>.
+    /// Updated every <see cref="Update"/> call; used by the UI for beat-pulse.
+    /// </summary>
+    public double CurrentBpm { get; private set; } = 120d;
+
     // -------------------------------------------------------------------------
     // Load
     // -------------------------------------------------------------------------
@@ -462,6 +470,10 @@ public sealed class RhythmGameEngine
                 }
             }
         }
+
+        CurrentBpm = Song is null ? 120d : GetBpmAt(
+            SecondsToBeatApprox(elapsedSeconds, Song.BpmChanges),
+            Song.BpmChanges);
     }
 
     // -------------------------------------------------------------------------
@@ -685,5 +697,30 @@ public sealed class RhythmGameEngine
         Plate = "";
         LastJudgmentText = Chart is null ? "READY" : "SELECT SONG";
         IsPlaying = false;
+    }
+
+    private static double SecondsToBeatApprox(double seconds, IReadOnlyList<BpmChange> bpmChanges)
+    {
+        if (seconds <= 0d || bpmChanges.Count == 0) return 0d;
+
+        var beat = 0d;
+        var elapsed = 0d;
+        var currentBpm = bpmChanges[0].Bpm;
+        var lastBeat = 0d;
+
+        foreach (var change in bpmChanges.OrderBy(c => c.Beat))
+        {
+            var segmentBeats = change.Beat - lastBeat;
+            var segmentSeconds = segmentBeats / currentBpm * 60d;
+            if (elapsed + segmentSeconds >= seconds) break;
+
+            elapsed += segmentSeconds;
+            beat = change.Beat;
+            lastBeat = change.Beat;
+            currentBpm = change.Bpm;
+        }
+
+        beat += (seconds - elapsed) / 60d * currentBpm;
+        return beat;
     }
 }

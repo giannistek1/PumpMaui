@@ -665,7 +665,18 @@ public sealed class NoteFieldDrawable : IDrawable
                                && flashAge >= 0d && flashAge <= 0.30d;
 
             if (isStarworthy)
+            {
+                // ── 5. Scale punch ────────────────────────────────────────────────────
+                // Receptor scale: 1.0 → 1.1 → 1.0 over ~120 ms, eased with a sine arch
+                const double punchDuration = 0.12d;
+                var punchT = (float)Math.Clamp(flashAge / punchDuration, 0d, 1d);
+                var scaleFactor = 1.0f + 0.10f * MathF.Sin(punchT * MathF.PI); // arch: 0→peak→0
+
+                canvas.SaveState();
+                canvas.Scale(scaleFactor, scaleFactor);
                 DrawStarBurst(canvas, laneShapeIndex, receptorSize, flashAge, lastJudgment);
+                canvas.RestoreState();
+            }
 
             DrawReceptorShape(canvas, laneShapeIndex, receptorSize, glow, isHoldActive);
 
@@ -1020,51 +1031,106 @@ public sealed class NoteFieldDrawable : IDrawable
     }
 
     /// <summary>
-    /// Draws a bright lens-flare style cross-light effect centred at the current canvas origin.
+    /// Draws a multi-part arcade receptor flash effect centred at the current canvas origin.
+    /// Decomposed into five phases:
+    ///   1. Base flash  – receptor brightens to white instantly then fades (~100 ms)
+    ///   2. Radial glow – soft white-blue circle expands outward and fades (~250 ms)
+    ///   3. Shine sweep – diagonal streak passes top-left → bottom-right (~120 ms)
+    ///   4. Sparkles    – 8 small particles burst outward and fade (~300 ms)
+    ///   5. Scale punch – receptor scales 1 → 1.1 → 1 over ~120 ms (drawn by caller)
     /// </summary>
     private static void DrawStarBurst(ICanvas canvas, int lane, float receptorSize, double flashAge, HitJudgment judgment)
     {
-        var t = (float)(flashAge / 0.25d);
+        const double TotalDuration = 0.30d;
+        var t = (float)Math.Clamp(flashAge / TotalDuration, 0d, 1d);
 
-        var alpha = Math.Clamp(1.0f - t, 0f, 1f);
-        // Arm length: starts at 0.65× receptor size, expands to 1.5× (was 1.0× → 2.8×)
-        var armLength = receptorSize * (0.65f + 0.85f * t);
-        // Arm width: starts slightly thinner, tapers the same way
-        var armWidth = receptorSize * Math.Clamp(0.22f - 0.18f * t, 0.03f, 0.22f);
+        // ── 1. Base flash ────────────────────────────────────────────────────────
+        // 0–100 ms: ease-out white overlay that covers the receptor area
+        const double flashDuration = 0.10d;
+        if (flashAge <= flashDuration)
+        {
+            var ft = (float)(flashAge / flashDuration);                     // 0→1
+            var flashAlpha = Math.Clamp(1.0f - ft * ft, 0f, 0.95f);        // ease-out
+            canvas.FillColor = Colors.White.WithAlpha(flashAlpha);
+            if (lane == 2)
+                canvas.FillRectangle(-receptorSize / 2f, -receptorSize / 2f, receptorSize, receptorSize);
+            else
+                canvas.FillEllipse(-receptorSize / 2f, -receptorSize / 2f, receptorSize, receptorSize);
+        }
 
-        canvas.SaveState();
+        // ── 2. Radial glow ───────────────────────────────────────────────────────
+        // Soft white-blue halo expands 1x → 2x receptor size over 250 ms
+        const double glowDuration = 0.25d;
+        if (flashAge <= glowDuration)
+        {
+            var gt = (float)(flashAge / glowDuration);                      // 0→1
+            var glowAlpha = Math.Clamp((1.0f - gt) * 0.55f, 0f, 1f);
+            var glowRadius = receptorSize * (0.5f + gt * 1.0f);            // 0.5x → 1.5x half-radius
 
-        // Soft outer glow halo — pure white, very transparent
-        var glowRadius = armLength * 0.55f;
-        canvas.FillColor = Colors.White.WithAlpha(alpha * 0.18f);
-        canvas.FillEllipse(-glowRadius, -glowRadius, glowRadius * 2f, glowRadius * 2f);
+            // Slightly blue-tinted outer ring
+            canvas.FillColor = Color.FromArgb("#C0DFFF").WithAlpha(glowAlpha * 0.60f);
+            canvas.FillEllipse(-glowRadius, -glowRadius, glowRadius * 2f, glowRadius * 2f);
 
-        // Draw two crossing lines at 0° and 90°, rotated 45° for the × look
-        canvas.Rotate(45f);
+            // Pure white inner core
+            var coreRadius = glowRadius * 0.55f;
+            canvas.FillColor = Colors.White.WithAlpha(glowAlpha * 0.80f);
+            canvas.FillEllipse(-coreRadius, -coreRadius, coreRadius * 2f, coreRadius * 2f);
+        }
 
-        canvas.StrokeColor = Colors.White.WithAlpha(alpha);
-        canvas.StrokeSize = armWidth;
-        canvas.StrokeLineCap = LineCap.Round;
+        // ── 3. Shine sweep ───────────────────────────────────────────────────────
+        // Elongated diagonal streak (top-left → bottom-right) over 0–120 ms
+        const double shineDuration = 0.12d;
+        if (flashAge <= shineDuration)
+        {
+            var st = (float)(flashAge / shineDuration);                     // 0→1
+            var shineAlpha = Math.Clamp(1.0f - st, 0f, 0.85f);
 
-        // Horizontal arm
-        canvas.DrawLine(-armLength, 0f, armLength, 0f);
-        // Vertical arm
-        canvas.DrawLine(0f, -armLength, 0f, armLength);
+            canvas.SaveState();
+            canvas.Rotate(-45f);                                            // align streak diagonally
 
-        // Second, slightly narrower pass with higher alpha for the bright core streak
-        var coreAlpha = Math.Clamp((1.0f - t) * 1.6f, 0f, 1f);
-        var coreLength = armLength * 0.55f;
-        canvas.StrokeColor = Colors.White.WithAlpha(coreAlpha);
-        canvas.StrokeSize = armWidth * 0.45f;
-        canvas.DrawLine(-coreLength, 0f, coreLength, 0f);
-        canvas.DrawLine(0f, -coreLength, 0f, coreLength);
+            // Streak: wide at centre, tapers at ends → draw as filled oval
+            var streakLength = receptorSize * (1.2f + st * 0.8f);          // grows as it sweeps
+            var streakWidth = receptorSize * 0.28f;
 
-        canvas.RestoreState();
+            // Offset the streak so it starts top-left and moves to bottom-right
+            var sweepOffset = receptorSize * (st - 0.5f) * 1.4f;
 
-        // Bright white core dot that flashes at the centre and shrinks fast
-        var dotAlpha = Math.Clamp((1.0f - t) * 2.0f, 0f, 1f);
-        var dotRadius = receptorSize * 0.18f * (1.0f - t * 0.8f);
-        canvas.FillColor = Colors.White.WithAlpha(dotAlpha);
-        canvas.FillEllipse(-dotRadius, -dotRadius, dotRadius * 2f, dotRadius * 2f);
+            canvas.FillColor = Colors.White.WithAlpha(shineAlpha);
+            canvas.FillEllipse(
+                sweepOffset - streakLength / 2f,
+                -streakWidth / 2f,
+                streakLength,
+                streakWidth);
+
+            canvas.RestoreState();
+        }
+
+        // ── 4. Particle sparkles ─────────────────────────────────────────────────
+        // 8 small particles burst outward from the centre and fade over 300 ms
+        const double particleDuration = 0.30d;
+        if (flashAge <= particleDuration)
+        {
+            var pt = (float)(flashAge / particleDuration);
+            var particleAlpha = Math.Clamp(1.0f - pt, 0f, 0.90f);
+            const int ParticleCount = 8;
+
+            for (var i = 0; i < ParticleCount; i++)
+            {
+                var angle = i * (MathF.PI * 2f / ParticleCount) + MathF.PI / 8f; // stagger 22.5°
+                var distance = receptorSize * (0.55f + pt * 1.10f);              // expand outward
+                var px = MathF.Cos(angle) * distance;
+                var py = MathF.Sin(angle) * distance;
+
+                var dotRadius = receptorSize * (0.07f - pt * 0.05f);             // shrink as they travel
+                dotRadius = Math.Max(dotRadius, 1.5f);
+
+                // Alternate white and pale-blue sparkles for variety
+                canvas.FillColor = (i % 2 == 0)
+                    ? Colors.White.WithAlpha(particleAlpha)
+                    : Color.FromArgb("#B8D8FF").WithAlpha(particleAlpha);
+
+                canvas.FillEllipse(px - dotRadius, py - dotRadius, dotRadius * 2f, dotRadius * 2f);
+            }
+        }
     }
 }

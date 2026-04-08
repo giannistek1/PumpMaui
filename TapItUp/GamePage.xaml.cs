@@ -20,13 +20,31 @@ public partial class GamePage : ContentPage
 
     private readonly RhythmGameEngine _engine = new();
     private readonly NoteFieldDrawable _noteFieldDrawable;
-    private NoteFieldDrawable? _landscapeNoteFieldDrawable; // Add this line
+    private NoteFieldDrawable? _landscapeNoteFieldDrawable;
     private readonly Stopwatch _playbackTimer = new();
     private double _playbackStartOffsetSeconds;
-    private double _notesDisplayOffsetSeconds = 0; // positive = delay notes by this many seconds (tweakable)
+    private double _notesDisplayOffsetSeconds = 0;
     private SscSong? _song;
     private SscChart? _chart;
     private bool _isGameLoaded;
+
+    // ── Animation state ──────────────────────────────────────────────────────
+    private int _lastAnimatedCombo = -1;
+    private string _lastAnimatedJudgment = "";
+
+    // ── Health meter state ───────────────────────────────────────────────────
+    private double _health = 0.30d;
+    private double _lastBeatTime = 0d;
+    private bool _beatPulseActive = false;
+
+    private const double HealthGainPerfect = 0.010d;
+    private const double HealthGainGreat = 0.007d;
+    private const double HealthGainGood = 0.003d;
+    private const double HealthDrainBad = 0.020d;
+    private const double HealthDrainMiss = 0.045d;
+
+    private ProgressBar? _portraitHealthBar;
+    private ProgressBar? _landscapeHealthBar;
 
     public string SongDataJson { get; set; } = "";
 
@@ -37,18 +55,15 @@ public partial class GamePage : ContentPage
         _noteFieldDrawable = new NoteFieldDrawable(_engine);
         NoteFieldView.Drawable = _noteFieldDrawable;
 
-        // Initialize the landscape drawable too
         _landscapeNoteFieldDrawable = new NoteFieldDrawable(_engine);
         LandscapeNoteFieldView.Drawable = _landscapeNoteFieldDrawable;
 
-        // Build all pads
         BuildPad(PortraitPad);
         BuildPad(LandscapeLeftPad);
         BuildPad(LandscapeRightPad);
 
         SizeChanged += OnPageSizeChanged;
 
-        // Add MediaElement event handlers for debugging
         SongMediaElement.MediaOpened += (s, e) =>
             System.Diagnostics.Debug.WriteLine("🎵 MediaElement: Media opened successfully");
 
@@ -58,7 +73,7 @@ public partial class GamePage : ContentPage
         SongMediaElement.MediaEnded += (s, e) =>
             System.Diagnostics.Debug.WriteLine("🎵 MediaElement: Media playback ended");
 
-        // Back to 60 FPS (16ms) for smooth rhythm game experience
+        BuildHealthMeters();
         Dispatcher.StartTimer(TimeSpan.FromMilliseconds(16), OnFrame);
     }
 
@@ -71,7 +86,6 @@ public partial class GamePage : ContentPage
             await LoadSongFromData();
         }
 
-        // Ensure keyboard focus
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(100), () => FocusKeyCatcher());
     }
 
@@ -84,13 +98,13 @@ public partial class GamePage : ContentPage
     private static readonly HttpClient _http = new();
     private Stream? _audioStream;
     private string? _audioTempFile;
+
     private async Task LoadSongFromData()
     {
         try
         {
             System.Diagnostics.Debug.WriteLine($"🎮 Raw SongDataJson: {SongDataJson}");
 
-            // First try to deserialize as the new GameStartData format
             GameStartData? gameStartData = null;
             try
             {
@@ -104,12 +118,9 @@ public partial class GamePage : ContentPage
 
             if (gameStartData != null)
             {
-                // New format from SongSelectPage - we already have the song and chart objects
                 _song = gameStartData.Song;
                 _chart = gameStartData.Chart;
 
-                // Convert AV to a scroll speed multiplier using the song's starting BPM.
-                // scrollMultiplier = AV / startingBpm, so AV 300 at 150 BPM = 2.0×.
                 var startingBpm = gameStartData.Song.BpmChanges.Count > 0
                     ? gameStartData.Song.BpmChanges.OrderBy(b => b.Beat).First().Bpm
                     : 150d;
@@ -120,13 +131,11 @@ public partial class GamePage : ContentPage
                 if (_landscapeNoteFieldDrawable != null)
                     _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = scrollMultiplier;
 
-                // Set the note skin on BOTH drawables
                 System.Diagnostics.Debug.WriteLine($"🎮 Setting note skin to: {gameStartData.NoteSkin}");
                 _noteFieldDrawable.NoteSkin = gameStartData.NoteSkin;
                 if (_landscapeNoteFieldDrawable != null)
-                {
                     _landscapeNoteFieldDrawable.NoteSkin = gameStartData.NoteSkin;
-                }
+
                 _engine.JudgmentDifficulty = gameStartData.JudgmentDifficulty;
 
                 System.Diagnostics.Debug.WriteLine($"   Song: {_song.Title}");
@@ -134,7 +143,6 @@ public partial class GamePage : ContentPage
                 System.Diagnostics.Debug.WriteLine($"   Chart: {_chart.Difficulty} {_chart.Meter}");
                 System.Diagnostics.Debug.WriteLine($"   Chart has {_chart.Notes.Count} notes");
 
-                // 🎵 LOAD / STREAM AUDIO
                 if (!string.IsNullOrWhiteSpace(gameStartData.RemoteAudioUrl))
                 {
                     try
@@ -142,9 +150,7 @@ public partial class GamePage : ContentPage
                         System.Diagnostics.Debug.WriteLine($"🎵 Loading audio: {gameStartData.RemoteAudioUrl}");
                         if (Uri.IsWellFormedUriString(gameStartData.RemoteAudioUrl, UriKind.Absolute))
                         {
-                            // 🌍 STREAM FROM CDN
                             System.Diagnostics.Debug.WriteLine("🌐 Streaming MP3 from remote URL...");
-
                             _audioStream = await _http.GetStreamAsync(gameStartData.RemoteAudioUrl);
 
                             var fileName = Path.GetFileName(new Uri(gameStartData.RemoteAudioUrl).LocalPath);
@@ -165,8 +171,6 @@ public partial class GamePage : ContentPage
                     }
                 }
 
-                // Store AV directly on the drawables — the scroll window is computed
-                // as 720 / AV seconds, matching real Pump It Up scroll timing.
                 System.Diagnostics.Debug.WriteLine($"🎮 AV: {gameStartData.Av}");
                 _noteFieldDrawable.Av = gameStartData.Av;
                 if (_landscapeNoteFieldDrawable != null)
@@ -176,7 +180,6 @@ public partial class GamePage : ContentPage
                 return;
             }
 
-            // Fallback to old GamePageData format for compatibility
             var gameData = JsonSerializer.Deserialize<GamePageData>(SongDataJson);
 
             if (gameData is null)
@@ -190,10 +193,8 @@ public partial class GamePage : ContentPage
             System.Diagnostics.Debug.WriteLine($"   Source: {gameData.SongSourcePath}");
             System.Diagnostics.Debug.WriteLine($"   Music: {gameData.SongMusicPath}");
 
-            // Load from embedded resources or external file
             if (string.IsNullOrEmpty(gameData.SongSourcePath) || gameData.SongSourcePath.StartsWith("Songs/"))
             {
-                // Load from bundled/embedded songs
                 var songPath = gameData.SongSourcePath ?? "phoenix_demo.ssc";
                 System.Diagnostics.Debug.WriteLine($"📄 Loading embedded song: {songPath}");
 
@@ -204,7 +205,6 @@ public partial class GamePage : ContentPage
             }
             else
             {
-                // Load from external file
                 System.Diagnostics.Debug.WriteLine($"📂 Loading external song: {gameData.SongSourcePath}");
                 var content = await File.ReadAllTextAsync(gameData.SongSourcePath);
                 _song = SscParser.Parse(content, gameData.SongSourcePath);
@@ -241,8 +241,6 @@ public partial class GamePage : ContentPage
 
             _engine.Load(_song, _chart);
 
-            // Rebuild landscape pads now that IsDoubleChart is known, so the right
-            // pad gets laneOffset = 5 when playing a double chart.
             BuildPad(LandscapeLeftPad);
             BuildPad(LandscapeRightPad);
 
@@ -275,7 +273,6 @@ public partial class GamePage : ContentPage
         _playbackStartOffsetSeconds = Math.Min(0d,
             (_engine.Chart?.Notes.FirstOrDefault()?.TimeSeconds ?? 0d) - 1.2d);
 
-        // Apply display offset so initial engine time is delayed by _notesDisplayOffsetSeconds
         _engine.Update(_playbackStartOffsetSeconds - _notesDisplayOffsetSeconds);
 
         _playbackTimer.Restart();
@@ -289,6 +286,373 @@ public partial class GamePage : ContentPage
         _playbackTimer.Stop();
         _playbackStartOffsetSeconds = 0d;
     }
+
+    // ── HUD ──────────────────────────────────────────────────────────────────
+
+    private static bool IsStartupMessage(string judgmentText) => judgmentText switch
+    {
+        "GO" => true,
+        "READY" => true,
+        "SELECT SONG" => true,
+        _ => false
+    };
+
+    private void RefreshHud()
+    {
+        var judgmentText = _engine.LastJudgmentText;
+        var countsText = $"PERFECT {_engine.Counts[HitJudgment.Perfect]} • GREAT {_engine.Counts[HitJudgment.Great]} • GOOD {_engine.Counts[HitJudgment.Good]} • BAD {_engine.Counts[HitJudgment.Bad]} • MISS {_engine.Counts[HitJudgment.Miss]}";
+
+        PortraitCountsLabel.Text = countsText;
+        LandscapeCountsLabel.Text = countsText;
+
+        var shouldShowJudgment = !IsStartupMessage(judgmentText);
+
+        if (shouldShowJudgment && judgmentText != _lastAnimatedJudgment)
+        {
+            _lastAnimatedJudgment = judgmentText;
+
+            // MISS always stays red — never let it cycle to yellow
+            var judgmentColor = judgmentText switch
+            {
+                "PERFECT" => Color.FromArgb("#87CEEB"),
+                "GREAT" => Color.FromArgb("#00FF00"),
+                "GOOD" => Color.FromArgb("#FFFF00"),
+                "BAD" => Color.FromArgb("#8A2BE2"),
+                "MISS" => Color.FromArgb("#FF0000"),
+                _ => Color.FromArgb("#FFE76A")
+            };
+
+            foreach (var label in new[] { CenterJudgmentLabel, LandscapeCenterJudgmentLabel })
+            {
+                label.Text = judgmentText;
+                label.TextColor = judgmentColor;
+                label.IsVisible = true;
+                _ = AnimateJudgmentAsync(label).ContinueWith(_ =>
+                {
+                    // Allow the same judgment to animate again on the next hit
+                    if (_lastAnimatedJudgment == judgmentText)
+                        _lastAnimatedJudgment = "";
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+            }
+
+            // Apply health change for this judgment
+            if (Enum.TryParse<HitJudgment>(judgmentText, ignoreCase: true, out var parsedJudgment))
+            {
+                ApplyHealthDelta(parsedJudgment);
+                UpdateHealthBar();
+
+                // Screen shake: on miss — subtle nudge only
+                if (parsedJudgment == HitJudgment.Miss)
+                    _ = ShakeScreenAsync(intensity: 3d, durationMs: 160);
+            }
+        }
+        else if (!shouldShowJudgment)
+        {
+            // Don't clear _lastAnimatedJudgment here — only clear it when a real
+            // new judgment arrives so that back-to-back identical judgments re-fire.
+            CenterJudgmentLabel.IsVisible = false;
+            LandscapeCenterJudgmentLabel.IsVisible = false;
+        }
+
+        // Miss combo takes priority over good combo when >= 4
+        var showMissCombo = _engine.MissCombo >= 4;
+        var showGoodCombo = !showMissCombo && _engine.Combo >= 4;
+        var showCombo = showMissCombo || showGoodCombo;
+
+        var comboNumber = showMissCombo ? _engine.MissCombo : _engine.Combo;
+        var comboColor = showMissCombo ? Color.FromArgb("#FF0000") : Colors.White;
+
+        CenterComboNumberLabel.IsVisible = showCombo;
+        CenterComboTextLabel.IsVisible = showCombo;
+        LandscapeCenterComboNumberLabel.IsVisible = showCombo;
+        LandscapeCenterComboTextLabel.IsVisible = showCombo;
+
+        if (showCombo)
+        {
+            var isMilestone = comboNumber % 100 == 0 && comboNumber > 0; // 100-combo milestones
+            var comboChanged = comboNumber != _lastAnimatedCombo;
+            _lastAnimatedCombo = comboNumber;
+
+            foreach (var (numLabel, textLabel) in new[]
+            {
+                (CenterComboNumberLabel,          CenterComboTextLabel),
+                (LandscapeCenterComboNumberLabel, LandscapeCenterComboTextLabel)
+            })
+            {
+                numLabel.Text = comboNumber.ToString();
+                numLabel.TextColor = comboColor;
+                textLabel.Text = "COMBO";
+                textLabel.TextColor = comboColor;
+
+                if (comboChanged)
+                    _ = AnimateComboHitAsync(numLabel, textLabel, comboColor, isMilestone);
+            }
+
+            // Gentle celebratory nudge on 100-combo milestones
+            if (isMilestone)
+                _ = ShakeScreenAsync(intensity: 2d, durationMs: 140);
+        }
+        else
+        {
+            _lastAnimatedCombo = -1;
+        }
+    }
+
+    // ── Animations ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Judgment pop: slight upward float + bounce scale + fast fade out over ~300 ms.
+    /// </summary>
+    private static async Task AnimateJudgmentAsync(Label label)
+    {
+        label.Opacity = 1d;
+        label.TranslationY = 0d;
+        label.Scale = 0.75d;
+
+        // Phase 1 (~60 ms): snap up + scale punch in
+        await Task.WhenAll(
+            label.TranslateTo(0d, -8d, 60, Easing.CubicOut),
+            label.ScaleTo(1.10d, 60, Easing.CubicOut));
+
+        // Phase 2 (~40 ms): tiny bounce back down
+        await Task.WhenAll(
+            label.TranslateTo(0d, -4d, 40, Easing.CubicIn),
+            label.ScaleTo(1.00d, 40, Easing.CubicIn));
+
+        // Phase 3 (~200 ms): float upward while fading out
+        await Task.WhenAll(
+            label.TranslateTo(0d, -22d, 200, Easing.CubicIn),
+            label.FadeTo(0d, 200, Easing.CubicIn));
+
+        // Clear the tracker so the same judgment fires again next hit
+        // (e.g. consecutive MISSes each get their own animation)
+        label.IsVisible = false;
+        label.Opacity = 1d;
+        label.TranslationY = 0d;
+        label.Scale = 1d;
+    }
+
+    /// <summary>
+    /// Combo hit punch: scale 1 → 1.15 → 1 quickly.
+    /// At milestones (multiples of 100) a bigger scale + temporary gold glow is applied.
+    /// </summary>
+    private static async Task AnimateComboHitAsync(Label numberLabel, Label textLabel, Color baseColor, bool isMilestone)
+    {
+        var peakScale = isMilestone ? 1.35d : 1.15d;
+        var punchMs = (uint)(isMilestone ? 90 : 60);
+        var snapbackMs = (uint)(isMilestone ? 110 : 80);
+        var glowColor = Color.FromArgb("#FFE45E");
+
+        if (isMilestone)
+        {
+            numberLabel.TextColor = glowColor;
+            textLabel.TextColor = glowColor;
+        }
+
+        await Task.WhenAll(
+            numberLabel.ScaleTo(peakScale, punchMs, Easing.CubicOut),
+            textLabel.ScaleTo(peakScale * 0.85d, punchMs, Easing.CubicOut));
+
+        await Task.WhenAll(
+            numberLabel.ScaleTo(1d, snapbackMs, Easing.SpringOut),
+            textLabel.ScaleTo(1d, snapbackMs, Easing.SpringOut));
+
+        if (isMilestone)
+        {
+            numberLabel.TextColor = baseColor;
+            textLabel.TextColor = baseColor;
+        }
+    }
+
+    private bool _isShaking = false;
+
+    /// <summary>
+    /// Subtle arcade screen nudge. A single soft left-right oscillation that
+    /// decays quickly. Much gentler than a full earthquake-style shake.
+    /// </summary>
+    private async Task ShakeScreenAsync(double intensity = 3d, int durationMs = 180)
+    {
+        if (_isShaking) return;
+        _isShaking = true;
+
+        var target = MainGrid;
+        var stepMs = (uint)28;
+        var steps = durationMs / (int)stepMs;
+
+        for (var i = 0; i < steps; i++)
+        {
+            // Sine wave: oscillates once, decays linearly
+            var progress = (double)i / steps;
+            var decay = 1d - progress;                          // 1 → 0
+            var offset = intensity * decay * Math.Sin(progress * Math.PI * 2d);
+            await target.TranslateTo(offset, 0d, stepMs, Easing.Linear);
+        }
+
+        // Always snap cleanly back to zero
+        target.TranslationX = 0d;
+        _isShaking = false;
+    }
+
+    // ── Health meter ────────────────────────────────────────────────────────
+    // Per-bar references to the dark mask overlay (shrinks right as health rises)
+    private BoxView? _portraitHealthMask;
+    private BoxView? _landscapeHealthMask;
+
+    private void BuildHealthMeters()
+    {
+        _portraitHealthBar = null; // not used — replaced by rainbow bar
+        _landscapeHealthBar = null;
+
+        PortraitHealthContainer.Content = CreateRainbowHealthBar(out _portraitHealthMask);
+        LandscapeHealthContainer.Content = CreateRainbowHealthBar(out _landscapeHealthMask);
+
+        // Set initial mask widths to reflect 30 % starting health
+        UpdateHealthBar();
+    }
+
+    /// <summary>
+    /// Builds a rainbow gradient bar with a dark right-side mask that reveals
+    /// the gradient left-to-right as health increases.
+    /// </summary>
+    private static Grid CreateRainbowHealthBar(out BoxView mask)
+    {
+        // Full-width rainbow gradient (red → orange → yellow → green → cyan → blue → violet)
+        var rainbow = new BoxView
+        {
+            HeightRequest = 10,
+            HorizontalOptions = LayoutOptions.Fill,
+            CornerRadius = 5,
+            Opacity = 0.95d,
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(1, 0),
+                GradientStops =
+                [
+                    new GradientStop { Color = Color.FromArgb("#FF2D2D"), Offset = 0.00f },
+                    new GradientStop { Color = Color.FromArgb("#FF8C00"), Offset = 0.17f },
+                    new GradientStop { Color = Color.FromArgb("#FFE45E"), Offset = 0.34f },
+                    new GradientStop { Color = Color.FromArgb("#00FF88"), Offset = 0.50f },
+                    new GradientStop { Color = Color.FromArgb("#00C2FF"), Offset = 0.67f },
+                    new GradientStop { Color = Color.FromArgb("#4169E1"), Offset = 0.83f },
+                    new GradientStop { Color = Color.FromArgb("#9B30FF"), Offset = 1.00f },
+                ]
+            }
+        };
+
+        // Dark overlay that covers the right (empty) portion
+        mask = new BoxView
+        {
+            HeightRequest = 10,
+            HorizontalOptions = LayoutOptions.End,
+            CornerRadius = new CornerRadius(0, 5, 0, 5),
+            BackgroundColor = Color.FromArgb("#CC090212"), // matches page bg
+        };
+
+        // Thin dark track behind the gradient
+        var track = new BoxView
+        {
+            HeightRequest = 10,
+            HorizontalOptions = LayoutOptions.Fill,
+            CornerRadius = 5,
+            BackgroundColor = Color.FromArgb("#1A1A2E"),
+        };
+
+        var container = new Grid
+        {
+            HeightRequest = 10,
+            HorizontalOptions = LayoutOptions.Fill,
+            Margin = new Thickness(8, 0),
+        };
+
+        container.Add(track);
+        container.Add(rainbow);
+        container.Add(mask);
+
+        return container;
+    }
+
+    private void ApplyHealthDelta(HitJudgment judgment)
+    {
+        _health += judgment switch
+        {
+            HitJudgment.Perfect => HealthGainPerfect,
+            HitJudgment.Great => HealthGainGreat,
+            HitJudgment.Good => HealthGainGood,
+            HitJudgment.Bad => -HealthDrainBad,
+            HitJudgment.Miss => -HealthDrainMiss,
+            _ => 0d
+        };
+
+        _health = Math.Clamp(_health, 0d, 1d);
+    }
+
+    private void UpdateHealthBar()
+    {
+        // The mask covers the empty (right) portion: WidthRequest proportional to (1 - health).
+        // We use WidthRequest only as a relative hint — the actual pixel width is resolved
+        // via SizeChanged on each container, but a percentage approach via HorizontalOptions
+        // is simpler: we scale the mask's WidthRequest off the container's measured width.
+        SetMaskWidth(_portraitHealthMask, PortraitHealthContainer);
+        SetMaskWidth(_landscapeHealthMask, LandscapeHealthContainer);
+    }
+
+    private void SetMaskWidth(BoxView? maskView, ContentView container)
+    {
+        if (maskView == null) return;
+
+        var containerWidth = container.Width;
+        if (containerWidth <= 0)
+        {
+            // Container not yet measured — defer until it has a size
+            container.SizeChanged += (_, _) => SetMaskWidth(maskView, container);
+            return;
+        }
+
+        // Subtract the margin (8 left + 8 right = 16) to match the inner Grid width
+        var innerWidth = Math.Max(0, containerWidth - 16);
+        var emptyFraction = 1d - _health;
+        maskView.WidthRequest = innerWidth * emptyFraction;
+    }
+
+    private void TickBeatPulse(double currentTimeSeconds)
+    {
+        var bpm = _engine.CurrentBpm;
+        if (bpm <= 0d || !_engine.IsPlaying) return;
+
+        var secondsPerBeat = 60d / bpm;
+        var nextBeat = _lastBeatTime + secondsPerBeat;
+
+        if (currentTimeSeconds >= nextBeat)
+        {
+            _lastBeatTime = currentTimeSeconds;
+
+            if (!_beatPulseActive)
+                _ = PulseBeatAsync();
+        }
+    }
+
+    private async Task PulseBeatAsync()
+    {
+        _beatPulseActive = true;
+
+        // Pulse the outer ContentView containers (wraps the whole bar incl. mask)
+        var containers = new View[] { PortraitHealthContainer, LandscapeHealthContainer };
+
+        foreach (var c in containers)
+            _ = c.ScaleTo(1.05d, 55, Easing.CubicOut);
+
+        await Task.Delay(55);
+
+        foreach (var c in containers)
+            _ = c.ScaleTo(1.00d, 90, Easing.SpringOut);
+
+        await Task.Delay(90);
+
+        _beatPulseActive = false;
+    }
+
+    // ── Game loop ────────────────────────────────────────────────────────────
 
     private bool OnFrame()
     {
@@ -310,6 +674,8 @@ public partial class GamePage : ContentPage
 
         _engine.Update(engineTime);
 
+        TickBeatPulse(engineTime);
+
         var hudChanged = previousScore != _engine.Score ||
                          previousCombo != _engine.Combo ||
                          previousMissCombo != _engine.MissCombo ||
@@ -326,7 +692,6 @@ public partial class GamePage : ContentPage
             LandscapeNoteFieldView?.Invalidate();
         }
 
-        // Check if the game just ended (was playing, now stopped)
         if (wasPlaying && !_engine.IsPlaying)
         {
             System.Diagnostics.Debug.WriteLine("🎮 Game ended - navigating to results");
@@ -359,7 +724,6 @@ public partial class GamePage : ContentPage
 
             System.Diagnostics.Debug.WriteLine($"🎮 Navigating to ResultsPage with data length: {encodedResults.Length}");
 
-            // Use BeginInvokeOnMainThread to ensure we're on the UI thread
             MainThread.BeginInvokeOnMainThread(async () =>
             {
                 try
@@ -379,6 +743,8 @@ public partial class GamePage : ContentPage
         return true;
     }
 
+    // ── Audio ────────────────────────────────────────────────────────────────
+
     private async void OnStopClicked(object? sender, EventArgs e)
     {
         StopGame();
@@ -391,7 +757,6 @@ public partial class GamePage : ContentPage
         SongMediaElement.Source = null;
         await Task.Delay(50);
 
-        // --- Cached remote audio (CDN) ---
         if (!string.IsNullOrEmpty(_audioTempFile) && File.Exists(_audioTempFile))
         {
             System.Diagnostics.Debug.WriteLine($"🎵 Using cached remote audio: {_audioTempFile}");
@@ -404,7 +769,6 @@ public partial class GamePage : ContentPage
 
         try
         {
-            // --- Embedded bundle assets (starts with "Songs/") ---
             if (!string.IsNullOrWhiteSpace(_song.SourcePath) && _song.SourcePath.StartsWith("Songs/"))
             {
                 var baseDir = Path.GetDirectoryName(_song.SourcePath);
@@ -443,10 +807,6 @@ public partial class GamePage : ContentPage
             }
 
 #if ANDROID
-            // --- Android SAF external folder ---
-            // Direct file paths are blocked by scoped storage on Android 10+.
-            // If the song was loaded via SAF (SongDocumentUri is set), find the audio
-            // file inside that document tree using ContentResolver.
             if (!string.IsNullOrWhiteSpace(_song.SongDocumentUri))
             {
                 System.Diagnostics.Debug.WriteLine($"🎵 Android SAF path — scanning song folder for audio");
@@ -456,7 +816,6 @@ public partial class GamePage : ContentPage
                     var treeUri = Android.Net.Uri.Parse(_song.SongDocumentUri);
                     if (treeUri != null)
                     {
-                        // List children of the song folder document
                         var songDocId = Android.Provider.DocumentsContract.GetDocumentId(treeUri)
                                         ?? Android.Provider.DocumentsContract.GetTreeDocumentId(treeUri);
 
@@ -469,7 +828,7 @@ public partial class GamePage : ContentPage
                                 { ".mp3", ".ogg", ".wav", ".flac", ".m4a" };
 
                             Android.Database.ICursor? cursor = null;
-                            string? audioDocId = null;
+                            string? audioDocId   = null;
                             string? audioFileName = null;
                             try
                             {
@@ -484,15 +843,14 @@ public partial class GamePage : ContentPage
                                 while (cursor?.MoveToNext() == true)
                                 {
                                     var docId = cursor.GetString(0);
-                                    var name = cursor.GetString(1);
+                                    var name  = cursor.GetString(1);
                                     if (docId != null && name != null &&
                                         audioExtensions.Contains(Path.GetExtension(name)))
                                     {
-                                        // Prefer the file matching _song.MusicPath exactly, fall back to first audio
                                         if (audioDocId == null ||
                                             name.Equals(Path.GetFileName(_song.MusicPath), StringComparison.OrdinalIgnoreCase))
                                         {
-                                            audioDocId = docId;
+                                            audioDocId   = docId;
                                             audioFileName = name;
                                         }
                                     }
@@ -510,12 +868,11 @@ public partial class GamePage : ContentPage
 
                                 System.Diagnostics.Debug.WriteLine($"🎵 Found SAF audio: {audioFileName} ({audioDocId})");
 
-                                // Copy to cache so MediaElement can play it via a file:// URI
-                                var tempDir = GetReliableTempDirectory();
+                                var tempDir  = GetReliableTempDirectory();
                                 var tempFile = Path.Combine(tempDir,
                                     $"{Path.GetFileNameWithoutExtension(audioFileName!)}_{DateTime.Now.Ticks}{Path.GetExtension(audioFileName)}");
 
-                                await using (var inStream = context.ContentResolver!.OpenInputStream(audioUri!))
+                                await using (var inStream  = context.ContentResolver!.OpenInputStream(audioUri!))
                                 await using (var outStream = File.Create(tempFile))
                                 {
                                     await inStream!.CopyToAsync(outStream);
@@ -542,11 +899,10 @@ public partial class GamePage : ContentPage
                     System.Diagnostics.Debug.WriteLine($"   {ex.StackTrace}");
                 }
 
-                return; // SAF songs don't have a fallback file path
+                return;
             }
 #endif
 
-            // --- External files loaded via file path (desktop / iOS) ---
             if (!string.IsNullOrWhiteSpace(_song.SourcePath))
             {
                 var baseDir = Path.GetDirectoryName(_song.SourcePath);
@@ -572,18 +928,13 @@ public partial class GamePage : ContentPage
         }
     }
 
-    /// <summary>
-    /// Gets a reliable temporary directory, falling back to alternatives if the default cache directory is invalid
-    /// </summary>
     private static string GetReliableTempDirectory()
     {
         try
         {
-            // Try the default MAUI cache directory first
             var defaultCacheDir = FileSystem.Current.CacheDirectory;
             System.Diagnostics.Debug.WriteLine($"📁 Default cache directory: {defaultCacheDir}");
 
-            // Check if the directory path looks valid and doesn't contain problematic patterns
             if (!defaultCacheDir.Contains("User Name", StringComparison.OrdinalIgnoreCase) &&
                 !defaultCacheDir.Contains("UserName", StringComparison.OrdinalIgnoreCase))
             {
@@ -599,7 +950,6 @@ public partial class GamePage : ContentPage
             System.Diagnostics.Debug.WriteLine($"⚠️ Failed to access default cache directory: {ex.Message}");
         }
 
-        // Fallback options
         var fallbackDirs = new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TapItUp", "audio"),
@@ -621,26 +971,20 @@ public partial class GamePage : ContentPage
             }
         }
 
-        // Last resort - use system temp
         System.Diagnostics.Debug.WriteLine("📁 Using system temp directory as last resort");
         return Path.GetTempPath();
     }
 
-    /// <summary>
-    /// Try alternative methods to load embedded audio when the primary method fails
-    /// </summary>
     private async Task TryAlternativeAudioLoading(string embeddedAudioPath)
     {
         try
         {
-            // Method 1: Try direct ms-appx URI (works on some platforms)
             var msAppxUri = $"ms-appx:///{embeddedAudioPath}";
             System.Diagnostics.Debug.WriteLine($"🔄 Trying ms-appx URI: {msAppxUri}");
 
             SongMediaElement.Source = MediaSource.FromUri(msAppxUri);
             SongMediaElement.Play();
 
-            // Wait a bit to see if it works
             await Task.Delay(500);
             if (SongMediaElement.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing ||
                 SongMediaElement.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Buffering)
@@ -649,7 +993,6 @@ public partial class GamePage : ContentPage
                 return;
             }
 
-            // Method 2: Try embedded resource approach
             System.Diagnostics.Debug.WriteLine("🔄 Trying embedded resource method...");
             SongMediaElement.Source = MediaSource.FromResource(embeddedAudioPath);
             SongMediaElement.Play();
@@ -670,126 +1013,45 @@ public partial class GamePage : ContentPage
         System.Diagnostics.Debug.WriteLine("❌ All audio loading methods failed");
     }
 
+    // ── Layout ───────────────────────────────────────────────────────────────
+
     private void OnPageSizeChanged(object? sender, EventArgs e)
     {
         var isLandscape = Width > Height;
 
-        // Toggle between portrait and landscape layouts
         PortraitLayout.IsVisible = !isLandscape;
         LandscapeLayout.IsVisible = isLandscape;
 
         if (isLandscape)
         {
-            // Set up landscape-specific drawable if not already done
             if (LandscapeNoteFieldView.Drawable == null)
             {
                 _landscapeNoteFieldDrawable = new NoteFieldDrawable(_engine);
                 LandscapeNoteFieldView.Drawable = _landscapeNoteFieldDrawable;
             }
 
-            // Set landscape mode flag on both drawables
             _noteFieldDrawable.IsLandscapeMode = true;
             if (_landscapeNoteFieldDrawable != null)
             {
                 _landscapeNoteFieldDrawable.IsLandscapeMode = true;
-                // Sync the note skin and scroll speed
                 _landscapeNoteFieldDrawable.NoteSkin = _noteFieldDrawable.NoteSkin;
                 _landscapeNoteFieldDrawable.ScrollSpeedMultiplier = _noteFieldDrawable.ScrollSpeedMultiplier;
             }
 
-            // Set the center area to quarter width of screen in landscape mode
-            LandscapeCenterGrid.WidthRequest = Width * 0.25; // 25% of screen width
-
-            // Sync background
+            LandscapeCenterGrid.WidthRequest = Width * 0.25;
             LandscapeBackgroundPreview.Source = BackgroundPreview.Source;
         }
         else
         {
-            // Portrait mode
             _noteFieldDrawable.IsLandscapeMode = false;
             if (_landscapeNoteFieldDrawable != null)
-            {
                 _landscapeNoteFieldDrawable.IsLandscapeMode = false;
-            }
         }
 
-        // Refocus after layout changes
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(50), () => FocusKeyCatcher());
     }
 
-    private void RefreshHud()
-    {
-        var judgmentText = _engine.LastJudgmentText;
-        var countsText = $"PERFECT {_engine.Counts[HitJudgment.Perfect]} • GREAT {_engine.Counts[HitJudgment.Great]} • GOOD {_engine.Counts[HitJudgment.Good]} • BAD {_engine.Counts[HitJudgment.Bad]} • MISS {_engine.Counts[HitJudgment.Miss]}";
-
-        PortraitCountsLabel.Text = countsText;
-        LandscapeCountsLabel.Text = countsText;
-
-        var shouldShowJudgment = !IsStartupMessage(judgmentText);
-
-        CenterJudgmentLabel.IsVisible = shouldShowJudgment;
-        LandscapeCenterJudgmentLabel.IsVisible = shouldShowJudgment;
-
-        if (shouldShowJudgment)
-        {
-            CenterJudgmentLabel.Text = judgmentText;
-            LandscapeCenterJudgmentLabel.Text = judgmentText;
-
-            var judgmentColor = judgmentText switch
-            {
-                "PERFECT" => Color.FromArgb("#87CEEB"),
-                "GREAT" => Color.FromArgb("#00FF00"),
-                "GOOD" => Color.FromArgb("#FFFF00"),
-                "BAD" => Color.FromArgb("#8A2BE2"),
-                "MISS" => Color.FromArgb("#FF0000"),
-                _ => Color.FromArgb("#FFE76A")
-            };
-
-            CenterJudgmentLabel.TextColor = judgmentColor;
-            LandscapeCenterJudgmentLabel.TextColor = judgmentColor;
-        }
-
-        // Miss combo takes priority over good combo when >= 4
-        var showMissCombo = _engine.MissCombo >= 4;
-        var showGoodCombo = !showMissCombo && _engine.Combo >= 4;
-        var showCombo = showMissCombo || showGoodCombo;
-
-        var comboNumber = showMissCombo ? _engine.MissCombo : _engine.Combo;
-        var comboColor = showMissCombo ? Color.FromArgb("#FF0000") : Colors.White;
-
-        // Portrait
-        CenterComboNumberLabel.IsVisible = showCombo;
-        CenterComboTextLabel.IsVisible = showCombo;
-
-        // Landscape
-        LandscapeCenterComboNumberLabel.IsVisible = showCombo;
-        LandscapeCenterComboTextLabel.IsVisible = showCombo;
-
-        if (showCombo)
-        {
-            CenterComboNumberLabel.Text = comboNumber.ToString();
-            CenterComboNumberLabel.TextColor = comboColor;
-            CenterComboTextLabel.Text = "COMBO";
-            CenterComboTextLabel.TextColor = comboColor;
-
-            LandscapeCenterComboNumberLabel.Text = comboNumber.ToString();
-            LandscapeCenterComboNumberLabel.TextColor = comboColor;
-            LandscapeCenterComboTextLabel.Text = "COMBO";
-            LandscapeCenterComboTextLabel.TextColor = comboColor;
-        }
-    }
-
-    // Helper method to determine if a judgment text is a startup message that should be hidden
-    private static bool IsStartupMessage(string judgmentText)
-    {
-        return judgmentText switch
-        {
-            "GO" => true,
-            "READY" => true,
-            "SELECT SONG" => true,
-            _ => false
-        };
-    }
+    // ── Pad building ─────────────────────────────────────────────────────────
 
     private void BuildPad(Grid grid)
     {
@@ -810,7 +1072,6 @@ public partial class GamePage : ContentPage
 
             grid.RowSpacing = 4;
             grid.ColumnSpacing = 4;
-
             grid.HorizontalOptions = LayoutOptions.Center;
             grid.VerticalOptions = LayoutOptions.End;
         }
@@ -824,33 +1085,24 @@ public partial class GamePage : ContentPage
             grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
         }
 
-        // For a double chart the left pad drives lanes 0-4 and right pad drives lanes 5-9.
-        // For a single chart both pads continue to drive lanes 0-4 (same as before).
         var isRightPad = grid == LandscapeRightPad;
         var isDouble = _engine.IsDoubleChart;
         var laneOffset = isRightPad && isDouble ? 5 : 0;
 
-        // Diamond formation: positions are the same for both pads; only the lane index shifts.
-        AddPadButton(grid, lane: laneOffset + 1, row: 0, column: 0); // Top Left
-        AddPadButton(grid, lane: laneOffset + 3, row: 0, column: 2); // Top Right
-        AddPadButton(grid, lane: laneOffset + 2, row: 1, column: 1); // Center
-        AddPadButton(grid, lane: laneOffset + 0, row: 2, column: 0); // Bottom Left
-        AddPadButton(grid, lane: laneOffset + 4, row: 2, column: 2); // Bottom Right
+        AddPadButton(grid, lane: laneOffset + 1, row: 0, column: 0);
+        AddPadButton(grid, lane: laneOffset + 3, row: 0, column: 2);
+        AddPadButton(grid, lane: laneOffset + 2, row: 1, column: 1);
+        AddPadButton(grid, lane: laneOffset + 0, row: 2, column: 0);
+        AddPadButton(grid, lane: laneOffset + 4, row: 2, column: 2);
     }
 
     private void AddPadButton(Grid grid, int lane, int row, int column)
     {
-        var isPortraitPad = grid == PortraitPad;
         var isLandscapePad = grid == LandscapeLeftPad || grid == LandscapeRightPad;
-
-        // Lane color and glyph always follow the 5-lane pad pattern (0-4).
-        // For double charts lanes 5-9 mirror the same colors as lanes 0-4.
         var laneColorIndex = lane % 5;
 
         if (isLandscapePad)
         {
-            var buttonSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 74 : 74;
-
             var button = new Button
             {
                 Text = string.Empty,
@@ -861,34 +1113,19 @@ public partial class GamePage : ContentPage
                 Margin = new Thickness(0),
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.End,
-                WidthRequest = buttonSize,
-                HeightRequest = buttonSize
+                WidthRequest = 74,
+                HeightRequest = 74
             };
 
-            button.Pressed += (_, _) =>
-            {
-                System.Diagnostics.Debug.WriteLine($"🎮 UI Button Pressed event fired for lane {lane}");
-                HandleLaneInput(lane);
-            };
-
-            button.Released += (_, _) =>
-            {
-                System.Diagnostics.Debug.WriteLine($"🎮 UI Button Released event fired for lane {lane}");
-                _engine.HandleLaneRelease(lane);
-            };
+            button.Pressed += (_, _) => { System.Diagnostics.Debug.WriteLine($"🎮 UI Button Pressed event fired for lane {lane}"); HandleLaneInput(lane); };
+            button.Released += (_, _) => { System.Diagnostics.Debug.WriteLine($"🎮 UI Button Released event fired for lane {lane}"); _engine.HandleLaneRelease(lane); };
 
             grid.Add(button, column, row);
             return;
         }
 
-        // Portrait pad logic
-        var baseSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
-            ? 75
-            : 90;
-
-        var baseFontSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS
-            ? 35
-            : 40;
+        var baseSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 75 : 90;
+        var baseFontSize = DeviceInfo.Platform == DevicePlatform.Android || DeviceInfo.Platform == DevicePlatform.iOS ? 35 : 40;
 
         var portraitButton = new Button
         {
@@ -905,17 +1142,8 @@ public partial class GamePage : ContentPage
             HeightRequest = baseSize
         };
 
-        portraitButton.Pressed += (_, _) =>
-        {
-            System.Diagnostics.Debug.WriteLine($"🎮 UI Button Pressed event fired for lane {lane}");
-            HandleLaneInput(lane);
-        };
-
-        portraitButton.Released += (_, _) =>
-        {
-            System.Diagnostics.Debug.WriteLine($"🎮 UI Button Released event fired for lane {lane}");
-            _engine.HandleLaneRelease(lane);
-        };
+        portraitButton.Pressed += (_, _) => { System.Diagnostics.Debug.WriteLine($"🎮 UI Button Pressed event fired for lane {lane}"); HandleLaneInput(lane); };
+        portraitButton.Released += (_, _) => { System.Diagnostics.Debug.WriteLine($"🎮 UI Button Released event fired for lane {lane}"); _engine.HandleLaneRelease(lane); };
 
         grid.Add(portraitButton, column, row);
     }
@@ -954,8 +1182,7 @@ public partial class GamePage : ContentPage
             var baseDirectory = Path.GetDirectoryName(song.SourcePath);
             if (string.IsNullOrWhiteSpace(baseDirectory)) return null;
 
-            var combined = Path.Combine(baseDirectory,
-                song.BackgroundPath.Replace('/', Path.DirectorySeparatorChar));
+            var combined = Path.Combine(baseDirectory, song.BackgroundPath.Replace('/', Path.DirectorySeparatorChar));
             return File.Exists(combined) ? ImageSource.FromFile(combined) : null;
         }
         catch
@@ -963,6 +1190,8 @@ public partial class GamePage : ContentPage
             return null;
         }
     }
+
+    // ── Keyboard / focus ─────────────────────────────────────────────────────
 
     private void FocusKeyCatcher()
     {
@@ -984,32 +1213,27 @@ public partial class GamePage : ContentPage
         var key = char.ToUpper(e.NewTextValue[^1]);
         int? lane = key switch
         {
-            '1' => 0, // Bottom left
-            '7' => 1, // Top left  
-            '5' => 2, // Center
-            '9' => 3, // Top right
-            '3' => 4, // Bottom right
-            // Also support WASD and arrow keys
-            'A' => 1, // Top left
-            'S' => 0, // Bottom left
-            'D' => 2, // Center
-            'F' => 3, // Top right
-            'G' => 4, // Bottom right
+            '1' => 0,
+            '7' => 1,
+            '5' => 2,
+            '9' => 3,
+            '3' => 4,
+            'A' => 1,
+            'S' => 0,
+            'D' => 2,
+            'F' => 3,
+            'G' => 4,
             _ => null
         };
 
         if (lane is int l)
-        {
             HandleLaneInput(l);
-        }
 
-        // Clear and maintain focus
         KeyCatcher.Text = string.Empty;
     }
 
     private void KeyCatcher_Unfocused(object sender, FocusEventArgs e)
     {
-        // Immediately refocus when losing focus
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(10), () => FocusKeyCatcher());
     }
 
@@ -1025,13 +1249,10 @@ public partial class GamePage : ContentPage
                 win.Activated -= Window_Activated;
                 win.Activated += Window_Activated;
 
-                // For Windows, also handle direct key events
                 if (win.Content is Microsoft.UI.Xaml.FrameworkElement content)
                 {
                     content.KeyDown -= Content_KeyDown;
                     content.KeyDown += Content_KeyDown;
-
-                    // NEW: Register KeyUp handler
                     content.KeyUp -= Content_KeyUp;
                     content.KeyUp += Content_KeyUp;
                 }
@@ -1048,9 +1269,7 @@ public partial class GamePage : ContentPage
     private void Window_Activated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs e)
     {
         if (e.WindowActivationState != Microsoft.UI.Xaml.WindowActivationState.Deactivated)
-        {
             Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(100), () => FocusKeyCatcher());
-        }
     }
 
     private void Content_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
@@ -1059,45 +1278,38 @@ public partial class GamePage : ContentPage
 
         int? lane = e.Key switch
         {
-            Windows.System.VirtualKey.Number1 or Windows.System.VirtualKey.NumberPad1 => 0, // Bottom left
-            Windows.System.VirtualKey.Number7 or Windows.System.VirtualKey.NumberPad7 => 1, // Top left
-            Windows.System.VirtualKey.Number5 or Windows.System.VirtualKey.NumberPad5 => 2, // Center
-            Windows.System.VirtualKey.Number9 or Windows.System.VirtualKey.NumberPad9 => 3, // Top right
-            Windows.System.VirtualKey.Number3 or Windows.System.VirtualKey.NumberPad3 => 4, // Bottom right
-            // WASD support
-            Windows.System.VirtualKey.A => 1, // Top left
-            Windows.System.VirtualKey.S => 0, // Bottom left
-            Windows.System.VirtualKey.D => 2, // Center
-            Windows.System.VirtualKey.F => 3, // Top right
-            Windows.System.VirtualKey.G => 4, // Bottom right
+            Windows.System.VirtualKey.Number1 or Windows.System.VirtualKey.NumberPad1 => 0,
+            Windows.System.VirtualKey.Number7 or Windows.System.VirtualKey.NumberPad7 => 1,
+            Windows.System.VirtualKey.Number5 or Windows.System.VirtualKey.NumberPad5 => 2,
+            Windows.System.VirtualKey.Number9 or Windows.System.VirtualKey.NumberPad9 => 3,
+            Windows.System.VirtualKey.Number3 or Windows.System.VirtualKey.NumberPad3 => 4,
+            Windows.System.VirtualKey.A => 1,
+            Windows.System.VirtualKey.S => 0,
+            Windows.System.VirtualKey.D => 2,
+            Windows.System.VirtualKey.F => 3,
+            Windows.System.VirtualKey.G => 4,
             _ => null
         };
 
-        if (lane is int l)
-        {
-            HandleLaneInput(l);
-            e.Handled = true;
-        }
+        if (lane is int l) { HandleLaneInput(l); e.Handled = true; }
     }
 
-    // NEW: Add KeyUp handler for keyboard release events
     private void Content_KeyUp(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (!_isGameLoaded || !_engine.IsPlaying) return;
 
         int? lane = e.Key switch
         {
-            Windows.System.VirtualKey.Number1 or Windows.System.VirtualKey.NumberPad1 => 0, // Bottom left
-            Windows.System.VirtualKey.Number7 or Windows.System.VirtualKey.NumberPad7 => 1, // Top left
-            Windows.System.VirtualKey.Number5 or Windows.System.VirtualKey.NumberPad5 => 2, // Center
-            Windows.System.VirtualKey.Number9 or Windows.System.VirtualKey.NumberPad9 => 3, // Top right
-            Windows.System.VirtualKey.Number3 or Windows.System.VirtualKey.NumberPad3 => 4, // Bottom right
-            // WASD support
-            Windows.System.VirtualKey.A => 1, // Top left
-            Windows.System.VirtualKey.S => 0, // Bottom left
-            Windows.System.VirtualKey.D => 2, // Center
-            Windows.System.VirtualKey.F => 3, // Top right
-            Windows.System.VirtualKey.G => 4, // Bottom right
+            Windows.System.VirtualKey.Number1 or Windows.System.VirtualKey.NumberPad1 => 0,
+            Windows.System.VirtualKey.Number7 or Windows.System.VirtualKey.NumberPad7 => 1,
+            Windows.System.VirtualKey.Number5 or Windows.System.VirtualKey.NumberPad5 => 2,
+            Windows.System.VirtualKey.Number9 or Windows.System.VirtualKey.NumberPad9 => 3,
+            Windows.System.VirtualKey.Number3 or Windows.System.VirtualKey.NumberPad3 => 4,
+            Windows.System.VirtualKey.A => 1,
+            Windows.System.VirtualKey.S => 0,
+            Windows.System.VirtualKey.D => 2,
+            Windows.System.VirtualKey.F => 3,
+            Windows.System.VirtualKey.G => 4,
             _ => null
         };
 
@@ -1109,6 +1321,8 @@ public partial class GamePage : ContentPage
         }
     }
 #endif
+
+    // ── Inner types ──────────────────────────────────────────────────────────
 
     private sealed class GamePageData
     {
@@ -1136,7 +1350,7 @@ public partial class GamePage : ContentPage
         public string SongTitle { get; set; } = "";
         public string SongArtist { get; set; } = "";
         public string ChartDifficulty { get; set; } = "";
-        public string ChartStepType { get; set; } = ""; // Add this new property
+        public string ChartStepType { get; set; } = "";
         public int ChartMeter { get; set; }
         public int Score { get; set; }
         public string Grade { get; set; } = "";

@@ -7,9 +7,9 @@
              NavigationPage.HasNavigationBar="False">
 
     <Grid x:Name="MainGrid">
-        
+
         <!-- Portrait Layout -->
-        <Grid x:Name="PortraitLayout" 
+        <Grid x:Name="PortraitLayout"
               IsVisible="True"
               Padding="{OnPlatform Default=12, iOS=6, Android=6}"
               IsClippedToBounds="True">
@@ -53,46 +53,43 @@
                   VerticalOptions="End"
                   Margin="{OnPlatform Default='0,0,0,10', iOS='0,0,0,5', Android='0,0,0,5'}" />
 
-            <!-- Center Overlay - Judgment and Combo -->
-            <StackLayout x:Name="CenterOverlayPortrait"
-                         HorizontalOptions="Center"
+            <!-- Combo counter — centred, slightly below mid -->
+            <StackLayout HorizontalOptions="Center"
                          VerticalOptions="Center"
                          Margin="0,80,0,0"
-                         Spacing="4"
-                         IsVisible="True">
-
-                <Label x:Name="CenterJudgmentLabel"
-                       Text="READY"
-                       FontSize="{OnPlatform Default=40, iOS=32, Android=32}"
-                       FontAttributes="Bold"
-                       TextColor="#FFE76A"
-                       HorizontalTextAlignment="Center"
-                       VerticalTextAlignment="Center"
-                       Opacity="0.9"
-                       Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
-
+                         Spacing="4">
                 <Label x:Name="CenterComboTextLabel"
                        Text="COMBO"
                        FontSize="{OnPlatform Default=20, iOS=16, Android=16}"
                        FontAttributes="Bold"
                        TextColor="White"
                        HorizontalTextAlignment="Center"
-                       VerticalTextAlignment="Center"
                        IsVisible="False"
                        Opacity="0.8"
                        Shadow="{Shadow Brush=Black, Offset='1,1', Radius=4, Opacity=0.8}" />
-
                 <Label x:Name="CenterComboNumberLabel"
                        Text="4"
                        FontSize="{OnPlatform Default=42, iOS=36, Android=36}"
                        FontAttributes="Bold"
                        TextColor="White"
                        HorizontalTextAlignment="Center"
-                       VerticalTextAlignment="Center"
                        IsVisible="False"
                        Opacity="0.9"
                        Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
             </StackLayout>
+
+            <!-- Judgment label — independent overlay, above combo, near top-center -->
+            <Label x:Name="CenterJudgmentLabel"
+                   FontSize="{OnPlatform Default=40, iOS=32, Android=32}"
+                   FontAttributes="Bold"
+                   TextColor="#FFE76A"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   Margin="0,-120,0,0"
+                   IsVisible="False"
+                   Opacity="0.9"
+                   Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
 
             <!-- Stats overlay -->
             <Label x:Name="PortraitCountsLabel"
@@ -110,16 +107,29 @@
                    IsVisible="False"
                    TextChanged="KeyCatcher_TextChanged"
                    Unfocused="KeyCatcher_Unfocused" />
+
+            <!-- Portrait health bar — pinned to the very top -->
+            <ContentView x:Name="PortraitHealthContainer"
+                         HorizontalOptions="Fill"
+                         VerticalOptions="Start"
+                         Margin="8,4,8,0" />
         </Grid>
 
-        <!-- Landscape Layout - Fixed center width with scaling sides -->
-        <Grid x:Name="LandscapeLayout" 
+        <!-- Landscape Layout -->
+        <Grid x:Name="LandscapeLayout"
               IsVisible="False"
               ColumnDefinitions="*,Auto,*"
-              RowDefinitions="*,Auto">
+              RowDefinitions="Auto,*,Auto">
+
+            <!-- Health bar spans full width at the very top row (Row 0) -->
+            <ContentView x:Name="LandscapeHealthContainer"
+                         Grid.Row="0"
+                         Grid.ColumnSpan="3"
+                         HorizontalOptions="Fill"
+                         Margin="8,4,8,0" />
 
             <!-- Exit button positioned at top right - Fixed positioning -->
-            <Button Grid.Row="0" 
+            <Button Grid.Row="1"
                     Grid.Column="2"
                     Text="✕"
                     Clicked="OnStopClicked"
@@ -135,19 +145,19 @@
                     ZIndex="100" />
 
             <!-- Left side - Scaling pad area -->
-            <Grid Grid.Column="0" Grid.Row="0" 
+            <Grid Grid.Column="0" Grid.Row="1"
                   Padding="8,8,8,4"
                   MinimumWidthRequest="120">
-                
+
                 <!-- Left input pad - Scales with available space -->
-                <Grid x:Name="LandscapeLeftPad" 
+                <Grid x:Name="LandscapeLeftPad"
                       HorizontalOptions="Fill"
                       VerticalOptions="End"
-                      Margin="0,8,0,0"/>
+                      Margin="0,8,0,0" />
             </Grid>
 
             <!-- Center - Quarter width note field -->
-            <Grid Grid.Column="1" Grid.Row="0" 
+            <Grid Grid.Column="1" Grid.Row="1"
                   x:Name="LandscapeCenterGrid"
                   Margin="8,0"
                   IsClippedToBounds="True">
@@ -158,7 +168,7 @@
                        Opacity="0.2"
                        HorizontalOptions="FillAndExpand"
                        VerticalOptions="FillAndExpand" />
-                
+
                 <!-- Note field with quarter width - extended downward beyond visible area -->
                 <GraphicsView x:Name="LandscapeNoteFieldView"
                               WidthRequest="180"
@@ -166,71 +176,65 @@
                               HorizontalOptions="Center"
                               VerticalOptions="Start" />
 
-                <!-- Center Overlay for Landscape - Judgment and Combo (Fixed Position with Margin) -->
-                <StackLayout x:Name="CenterOverlayLandscape"
-                             HorizontalOptions="Center"
+                <!-- Combo counter -->
+                <StackLayout HorizontalOptions="Center"
                              VerticalOptions="Center"
                              Margin="0,60,0,0"
-                             Spacing="3"
-                             IsVisible="True">
-                    
-                    <!-- Judgment Text (Fixed at top) -->
-                    <Label x:Name="LandscapeCenterJudgmentLabel"
-                           Text="READY"
-                           FontSize="26"
-                           FontAttributes="Bold"
-                           TextColor="#FFE76A"
-                           HorizontalTextAlignment="Center"
-                           VerticalTextAlignment="Center"
-                           Opacity="0.9"
-                           Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
-                    
-                    <!-- Combo Text - ABOVE combo number (Only visible when combo >= 4) -->
+                             Spacing="3">
                     <Label x:Name="LandscapeCenterComboTextLabel"
                            Text="COMBO"
                            FontSize="14"
                            FontAttributes="Bold"
                            TextColor="White"
                            HorizontalTextAlignment="Center"
-                           VerticalTextAlignment="Center"
                            IsVisible="False"
                            Opacity="0.8"
                            Shadow="{Shadow Brush=Black, Offset='1,1', Radius=4, Opacity=0.8}" />
-                    
-                    <!-- Combo Number - BELOW combo text (Only visible when combo >= 4) -->
                     <Label x:Name="LandscapeCenterComboNumberLabel"
                            Text="4"
                            FontSize="28"
                            FontAttributes="Bold"
                            TextColor="White"
                            HorizontalTextAlignment="Center"
-                           VerticalTextAlignment="Center"
                            IsVisible="False"
                            Opacity="0.9"
                            Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
                 </StackLayout>
+
+                <!-- Judgment label — independent overlay above combo -->
+                <Label x:Name="LandscapeCenterJudgmentLabel"
+                       FontSize="26"
+                       FontAttributes="Bold"
+                       TextColor="#FFE76A"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,-80,0,0"
+                       IsVisible="False"
+                       Opacity="0.9"
+                       Shadow="{Shadow Brush=Black, Offset='2,2', Radius=8, Opacity=0.8}" />
             </Grid>
 
             <!-- Right side - Scaling pad area -->
-            <Grid Grid.Column="2" Grid.Row="0" 
+            <Grid Grid.Column="2" Grid.Row="1"
                   Padding="8,8,8,4"
                   MinimumWidthRequest="120">
-                
+
                 <!-- Right input pad - Scales with available space -->
-                <Grid x:Name="LandscapeRightPad" 
+                <Grid x:Name="LandscapeRightPad"
                       HorizontalOptions="Fill"
                       VerticalOptions="End"
-                      Margin="0,8,0,0"/>
+                      Margin="0,8,0,0" />
             </Grid>
 
             <!-- Bottom stats across full width -->
-            <Border Grid.Row="1" Grid.ColumnSpan="3"
+            <Border Grid.Row="2" Grid.ColumnSpan="3"
                     Background="#140A29"
                     Stroke="#3E2B72"
                     StrokeThickness="1"
                     Padding="6"
                     Margin="4,8,4,0">
-                
+
                 <Label x:Name="LandscapeCountsLabel"
                        Text="PERFECT 0 • GREAT 0 • GOOD 0 • BAD 0 • MISS 0"
                        FontSize="10"
@@ -242,7 +246,7 @@
 
         <!-- Audio player -->
         <toolkit:MediaElement x:Name="SongMediaElement"
-                             IsVisible="False"
-                             ShouldAutoPlay="False" />
+                              IsVisible="False"
+                              ShouldAutoPlay="False" />
     </Grid>
 </ContentPage>
