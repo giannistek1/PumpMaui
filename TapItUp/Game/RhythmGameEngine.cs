@@ -69,6 +69,12 @@ public sealed class RhythmGameEngine
     public string Grade { get; private set; } = "D";
     public string Plate { get; private set; } = "";
     public string LastJudgmentText { get; private set; } = "READY";
+    /// <summary>
+    /// Incremented on every call to <see cref="RegisterJudgment"/>.
+    /// The UI compares this to detect new hits even when the judgment text is identical.
+    /// </summary>
+    public int JudgmentSequence { get; private set; }
+
     public bool FullCombo => _counts[HitJudgment.Bad] == 0 && _counts[HitJudgment.Miss] == 0;
 
     /// <summary>
@@ -625,6 +631,7 @@ public sealed class RhythmGameEngine
     private void RegisterJudgment(HitJudgment judgment)
     {
         _counts[judgment]++;
+        JudgmentSequence++;
 
         if (judgment == HitJudgment.Miss)
         {
@@ -693,6 +700,7 @@ public sealed class RhythmGameEngine
         MaxCombo = 0;
         MissCombo = 0;
         Score = 0;
+        JudgmentSequence = 0;
         Grade = "D";
         Plate = "";
         LastJudgmentText = Chart is null ? "READY" : "SELECT SONG";

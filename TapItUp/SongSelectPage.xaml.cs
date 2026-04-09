@@ -132,7 +132,7 @@ public partial class SongSelectPage : ContentPage
 
         // Load persisted animation preference; fall back to platform default
         var platformDefault = DeviceInfo.Platform != DevicePlatform.Android;
-        _animationsEnabled = Preferences.Default.Get(AnimationsEnabledKey, platformDefault);
+        AnimationsEnabled = Preferences.Default.Get(AnimationsEnabledKey, platformDefault);
 
         Routing.RegisterRoute("GamePage", typeof(GamePage));
         SizeChanged += OnPageSizeChanged;
@@ -347,7 +347,7 @@ public partial class SongSelectPage : ContentPage
             {
                 i++;
                 var songName = Path.GetFileNameWithoutExtension(result.SscUri);
-                
+
                 // Decode URL-encoded characters (e.g., %20 -> space)
                 songName = Uri.UnescapeDataString(songName);
 

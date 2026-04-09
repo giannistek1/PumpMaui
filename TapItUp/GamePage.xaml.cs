@@ -30,7 +30,7 @@ public partial class GamePage : ContentPage
 
     // ── Animation state ──────────────────────────────────────────────────────
     private int _lastAnimatedCombo = -1;
-    private string _lastAnimatedJudgment = "";
+    private int _lastAnimatedJudgmentSequence = -1;
 
     // Track which views are currently visible to avoid unnecessary redraws
     private bool _isPortraitMode = true;
@@ -318,10 +318,11 @@ public partial class GamePage : ContentPage
         LandscapeCountsLabel.Text = countsText;
 
         var shouldShowJudgment = !IsStartupMessage(judgmentText);
+        var isNewJudgment = _engine.JudgmentSequence != _lastAnimatedJudgmentSequence;
 
-        if (shouldShowJudgment && judgmentText != _lastAnimatedJudgment)
+        if (shouldShowJudgment && isNewJudgment)
         {
-            _lastAnimatedJudgment = judgmentText;
+            _lastAnimatedJudgmentSequence = _engine.JudgmentSequence;
 
             var judgmentColor = judgmentText switch
             {
@@ -333,7 +334,6 @@ public partial class GamePage : ContentPage
                 _ => Color.FromArgb("#FFE76A")
             };
 
-            // Animate only the visible label to avoid double-work
             var visibleLabel = _isPortraitMode ? CenterJudgmentLabel : LandscapeCenterJudgmentLabel;
             var hiddenLabel = _isPortraitMode ? LandscapeCenterJudgmentLabel : CenterJudgmentLabel;
 
@@ -341,31 +341,13 @@ public partial class GamePage : ContentPage
             visibleLabel.TextColor = judgmentColor;
             visibleLabel.IsVisible = true;
 
-            // Update hidden label without animation
             hiddenLabel.Text = judgmentText;
             hiddenLabel.TextColor = judgmentColor;
             hiddenLabel.IsVisible = true;
 
             if (AnimationsEnabled)
             {
-                _ = AnimateJudgmentAsync(visibleLabel).ContinueWith(_ =>
-                {
-                    if (_lastAnimatedJudgment == judgmentText)
-                        _lastAnimatedJudgment = "";
-                }, TaskScheduler.FromCurrentSynchronizationContext());
-            }
-            else
-            {
-                // No animation: auto-hide after a short fixed delay
-                _ = Task.Delay(500).ContinueWith(_ =>
-                {
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        visibleLabel.IsVisible = false;
-                        if (_lastAnimatedJudgment == judgmentText)
-                            _lastAnimatedJudgment = "";
-                    });
-                });
+                _ = AnimateJudgmentAsync(visibleLabel);
             }
 
             if (Enum.TryParse<HitJudgment>(judgmentText, ignoreCase: true, out var parsedJudgment))
@@ -401,7 +383,6 @@ public partial class GamePage : ContentPage
             var comboChanged = comboNumber != _lastAnimatedCombo;
             _lastAnimatedCombo = comboNumber;
 
-            // Only animate visible combo labels
             var (visibleNumLabel, visibleTextLabel, hiddenNumLabel, hiddenTextLabel) = _isPortraitMode
                 ? (CenterComboNumberLabel, CenterComboTextLabel, LandscapeCenterComboNumberLabel, LandscapeCenterComboTextLabel)
                 : (LandscapeCenterComboNumberLabel, LandscapeCenterComboTextLabel, CenterComboNumberLabel, CenterComboTextLabel);
@@ -411,7 +392,6 @@ public partial class GamePage : ContentPage
             visibleTextLabel.Text = "COMBO";
             visibleTextLabel.TextColor = comboColor;
 
-            // Update hidden labels without animation
             hiddenNumLabel.Text = comboNumber.ToString();
             hiddenNumLabel.TextColor = comboColor;
             hiddenTextLabel.Text = "COMBO";
@@ -432,29 +412,20 @@ public partial class GamePage : ContentPage
     // ── Animations ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Judgment pop: slight upward float + bounce scale + fast fade out over ~300 ms.
-    /// Optimized to complete faster and with fewer intermediate steps.
+    /// Judgment pop: quick scale punch that holds the label visible for ~600 ms,
+    /// then fades out. No translation — the text stays in place.
     /// </summary>
     private static async Task AnimateJudgmentAsync(Label label)
     {
         label.Opacity = 1d;
         label.TranslationY = 0d;
-        label.Scale = 0.75d;
+        label.Scale = 0.8d;
 
-        // Phase 1 & 2 combined (~100 ms): snap up + scale punch + bounce back
-        await Task.WhenAll(
-            label.TranslateTo(0d, -8d, 100, Easing.CubicOut),
-            label.ScaleTo(1.10d, 100, Easing.CubicOut));
+        // Scale punch in (~80 ms)
+        await label.ScaleTo(1.20d, 80, Easing.CubicOut);
 
-        // Phase 3 (~200 ms): float upward while fading out
-        await Task.WhenAll(
-            label.TranslateTo(0d, -22d, 200, Easing.CubicIn),
-            label.FadeTo(0d, 200, Easing.CubicIn));
-
-        label.IsVisible = false;
-        label.Opacity = 1d;
-        label.TranslationY = 0d;
-        label.Scale = 1d;
+        // Settle back to normal size (~60 ms)
+        await label.ScaleTo(1.00d, 60, Easing.CubicIn);
     }
 
     /// <summary>
@@ -688,6 +659,7 @@ public partial class GamePage : ContentPage
         var previousCombo = _engine.Combo;
         var previousMissCombo = _engine.MissCombo;
         var previousJudgment = _engine.LastJudgmentText;
+        var previousJudgmentSequence = _engine.JudgmentSequence;
         var previousTimeSeconds = _engine.CurrentTimeSeconds;
         var wasPlaying = _engine.IsPlaying;
 
@@ -698,7 +670,8 @@ public partial class GamePage : ContentPage
         var hudChanged = previousScore != _engine.Score ||
                          previousCombo != _engine.Combo ||
                          previousMissCombo != _engine.MissCombo ||
-                         previousJudgment != _engine.LastJudgmentText;
+                         previousJudgment != _engine.LastJudgmentText ||
+                         previousJudgmentSequence != _engine.JudgmentSequence;
 
         var timeChanged = Math.Abs(_engine.CurrentTimeSeconds - previousTimeSeconds) > 0.008;
 
@@ -1368,7 +1341,7 @@ public partial class GamePage : ContentPage
         public string NoteSkin { get; set; } = "Prime";
         public string? RemoteAudioUrl { get; set; }
         public JudgmentDifficulty JudgmentDifficulty { get; set; } = JudgmentDifficulty.Standard;
-        public bool AnimationsEnabled { get; set; } = DeviceInfo.Platform != DevicePlatform.Android;
+        public bool AnimationsEnabled { get; set; } = true;
     }
 
     private sealed class GameResultsData
