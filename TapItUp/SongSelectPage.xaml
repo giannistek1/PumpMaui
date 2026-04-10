@@ -114,7 +114,7 @@
                                 WidthRequest="100">
                             <Picker.Items>
                                 <x:String>Prime</x:String>
-                                <x:String>Fiesta2</x:String>
+                                <x:String>Fiestaex</x:String>
                                 <x:String>Old</x:String>
                                 <x:String>NXA</x:String>
                             </Picker.Items>
@@ -622,7 +622,7 @@
                                 WidthRequest="100">
                             <Picker.Items>
                                 <x:String>Prime</x:String>
-                                <x:String>Fiesta2</x:String>
+                                <x:String>Fiestaex</x:String>
                                 <x:String>Old</x:String>
                                 <x:String>NXA</x:String>
                             </Picker.Items>

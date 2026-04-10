@@ -5,6 +5,8 @@ namespace TapItUp.Game;
 
 public sealed class NoteFieldDrawable : IDrawable
 {
+    private float _noteScale = 0.9f;
+
     private static readonly Color[] LaneColors = [
         Color.FromArgb("#00C2FF"), // Blue (bottom left)
         Color.FromArgb("#FF2D2D"), // Red (top left)
@@ -579,9 +581,9 @@ public sealed class NoteFieldDrawable : IDrawable
 
                 float size;
                 if (IsLandscapeMode)
-                    size = MathF.Min(width * 0.75f, 35f);
+                    size = MathF.Min(width * _noteScale, 35f);
                 else
-                    size = MathF.Min(width * 0.80f, 44f);
+                    size = MathF.Min(width * _noteScale, 44f);
 
                 canvas.SaveState();
                 canvas.Translate(centerX, y);
@@ -640,9 +642,9 @@ public sealed class NoteFieldDrawable : IDrawable
 
             float receptorSize;
             if (IsLandscapeMode)
-                receptorSize = MathF.Min(width * 0.75f, 38f);
+                receptorSize = MathF.Min(width * _noteScale, 38f);
             else
-                receptorSize = MathF.Min(width * 0.80f, 44f);
+                receptorSize = MathF.Min(width * _noteScale, 44f);
 
             // Shape/color index is always within the 5-lane pattern
             var laneShapeIndex = lane % 5;

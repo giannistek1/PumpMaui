@@ -1035,7 +1035,10 @@ public partial class GamePage : ContentPage
                 _landscapeNoteFieldDrawable.Av = _noteFieldDrawable.Av;
             }
 
-            LandscapeCenterGrid.WidthRequest = Width * 0.25;
+            var noteFieldWidth = _engine.IsDoubleChart ? 360 : 180;
+            LandscapeNoteFieldView.WidthRequest = noteFieldWidth;
+            LandscapeCenterGrid.WidthRequest = noteFieldWidth;
+
             LandscapeBackgroundPreview.Source = BackgroundPreview.Source;
         }
         else
@@ -1104,7 +1107,7 @@ public partial class GamePage : ContentPage
             {
                 Text = string.Empty,
                 FontAttributes = FontAttributes.Bold,
-                BackgroundColor = LaneColors[laneColorIndex].WithAlpha(0.4f),
+                BackgroundColor = LaneColors[laneColorIndex].WithAlpha(0.3f),
                 TextColor = Colors.Black,
                 CornerRadius = 2,
                 Margin = new Thickness(0),

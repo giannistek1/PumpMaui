@@ -25,8 +25,8 @@
                  so the song background shows only in the surrounding area -->
             <Grid HorizontalOptions="Center"
                   VerticalOptions="Start"
-                  WidthRequest="210"
-                  HeightRequest="640"
+                  WidthRequest="180"
+                  HeightRequest="480"
                   IsClippedToBounds="True">
 
                 <GraphicsView x:Name="NoteFieldView"
@@ -142,12 +142,13 @@
                     HorizontalOptions="End"
                     VerticalOptions="Start"
                     Margin="0,10,10,0"
-                    ZIndex="100" />
+                    ZIndex="200" />
 
             <!-- Left side - Scaling pad area -->
             <Grid Grid.Column="0" Grid.Row="1"
                   Padding="8,8,8,4"
-                  MinimumWidthRequest="120">
+                  MinimumWidthRequest="120"
+                  ZIndex="10">
 
                 <!-- Left input pad - Scales with available space -->
                 <Grid x:Name="LandscapeLeftPad"
@@ -156,11 +157,12 @@
                       Margin="0,8,0,0" />
             </Grid>
 
-            <!-- Center - Quarter width note field -->
+            <!-- Center - note field, sits behind pads -->
             <Grid Grid.Column="1" Grid.Row="1"
                   x:Name="LandscapeCenterGrid"
-                  Margin="8,0"
-                  IsClippedToBounds="True">
+                  Margin="0"
+                  IsClippedToBounds="True"
+                  ZIndex="1">
 
                 <!-- Background for center area only -->
                 <Image x:Name="LandscapeBackgroundPreview"
@@ -169,10 +171,10 @@
                        HorizontalOptions="FillAndExpand"
                        VerticalOptions="FillAndExpand" />
 
-                <!-- Note field with quarter width - extended downward beyond visible area -->
+                <!-- Note field -->
                 <GraphicsView x:Name="LandscapeNoteFieldView"
                               WidthRequest="180"
-                              HeightRequest="640"
+                              HeightRequest="480"
                               HorizontalOptions="Center"
                               VerticalOptions="Start" />
 
@@ -218,7 +220,8 @@
             <!-- Right side - Scaling pad area -->
             <Grid Grid.Column="2" Grid.Row="1"
                   Padding="8,8,8,4"
-                  MinimumWidthRequest="120">
+                  MinimumWidthRequest="120"
+                  ZIndex="10">
 
                 <!-- Right input pad - Scales with available space -->
                 <Grid x:Name="LandscapeRightPad"
